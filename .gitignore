@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-single/
+dist-pages/
+dist-artifact/
+shots/
+.env
+.env.local
