@@ -2,7 +2,7 @@ import { chromium } from "@playwright/test";
 const [,, base, out, scheme = "light"] = process.argv;
 const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
 const ctx = await b.newContext({ viewport: { width: 1366, height: 860 }, colorScheme: scheme });
-await ctx.route("**/*.workers.dev/**", (r) => {
+await ctx.route((u) => /workers\.dev|vercel\.app\/api\//.test(u.href), (r) => {
   const body = JSON.parse(r.request().postData() || "{}");
   const last = body.contents?.at(-1);
   const content = last?.parts.some((p) => p.functionResponse) ? { role: "model", parts: [{ text: "Ini cara bayar selepas kerja siap:" }] } : { role: "model", parts: [{ functionCall: { name: "get_help", args: { topic: "pay_after_rule" } } }] };

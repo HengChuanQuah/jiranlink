@@ -30,7 +30,7 @@ let page;
 // Fake JiranLink AI server, so the assistant's AI path is tested without a real key.
 // Only used when the build points at an AI server (npm run build:pages); otherwise the app gives quick answers.
 async function mockAiServer(ctx) {
-  await ctx.route("**/*.workers.dev/**", async (route) => {
+  await ctx.route((u) => /workers\.dev|vercel\.app\/api\//.test(u.href), async (route) => {
     const url = route.request().url();
     const body = JSON.parse(route.request().postData() || "{}");
     const reply = (content) => route.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ content }) });
