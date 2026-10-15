@@ -11,9 +11,9 @@ import { postRequest, respondToRequest } from "../../lib/domain";
 import { timeAgo } from "../../lib/time";
 import type { RequestPost } from "../../data/types";
 
-export function Requests() {
+export function Requests({ draft }: { draft?: string }) {
   const { s, me, myProvider } = useMe();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(draft ?? "");
   const [override, setOverride] = useState<string>("");
   const ai = useMemo(() => (text.trim().length > 5 ? understandFast(text, thresholdsFrom(s.config)) : null), [text, s.config]);
   const aiCat = ai ? (ai.decision.kind === "confident" ? ai.decision.categoryId : ai.decision.kind === "ambiguous" ? ai.decision.categoryIds[0] : null) : null;

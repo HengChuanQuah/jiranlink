@@ -24,8 +24,8 @@ Live test build: https://hengchuanquah.github.io/jiranlink/
 npm run build:pages    # builds into dist-pages/ for https://<user>.github.io/jiranlink/
 ```
 
-Push the contents of `dist-pages/` to the `gh-pages` branch, then in the repo go to
-Settings > Pages and choose "Deploy from a branch", `gh-pages`, `/ (root)`.
+`npm run deploy:pages` builds and pushes `dist-pages/` to the `gh-pages` branch (Settings > Pages is set to
+"Deploy from a branch", `gh-pages`, `/ (root)`). The site updates in 1 to 2 minutes.
 The public build contains no API keys.
 
 Optional keys go in `.env` (copy `.env.example`). They can also be typed into Admin > Settings during a demo.
@@ -77,14 +77,40 @@ For a real pilot, move `src/ai/adapter.ts` behind a small server endpoint and ke
 
 All thresholds are in `src/data/seed.ts` (`DEFAULT_CONFIG`) and editable in Admin > Settings.
 
+## AI: search fallback and "Ask JiranLink"
+
+- **Search** tries keywords first (English, Malay, Chinese, Manglish) and asks the AI only when keywords aren't confident.
+- **Ask JiranLink** (bottom-right button) answers residents' questions using tools that run on the app's own data:
+  `find_providers` (the real ranked search), `get_help` (the help guide in `src/ai/help.ts`), `my_bookings` and
+  `draft_request`. Provider cards, help text and bookings shown under an answer come from the app, not the AI's wording,
+  and an answer that names a provider the search didn't return is replaced. Without an AI server it gives keyword-based quick answers.
+- Prompts and tools live in `src/ai/spec.ts`, shared by the app and the AI server.
+
+### The AI server (keeps the key off the website)
+
+`worker/worker.js` is a Cloudflare Worker that holds the Gemini key. Rebuild it after changing `src/ai/spec.ts`
+or the categories:
+
+```bash
+npm run build:worker   # writes worker/worker.js
+```
+
+Then paste it into the Worker's code editor in Cloudflare and click Deploy. In the Worker's Settings > Variables and Secrets:
+`GEMINI_API_KEY` (Secret, required), `GEMINI_MODEL` (optional, default `gemini-3.8-flash`, falls back to
+`gemini-3.5-flash-lite`), `ALLOWED_ORIGINS` (optional). Open `https://<worker>/check` in a browser to confirm the key works.
+The public build points at it through `.env.pages`. Limits are best-effort: 60 requests per visitor per 10 minutes.
+
+Admin (Township team) > Settings > **AI check** runs the 40 held-out search phrases and 13 assistant questions
+through the live AI from the browser and shows the score.
+
 ## Testing
 
 ```bash
-npm test               # 31 unit tests: ranking, ratings, slots, booking and payment rules, trust rules, AI routing
+npm test               # 51 unit tests: ranking, ratings, slots, booking and payment rules, trust rules, AI routing, assistant tools, AI server
 npm run eval:ai        # AI helper on the 107 phrases it was tuned on
 SET=heldout npm run eval:ai   # 40 phrases it was NOT tuned on: the honest number
 npm run build && npx vite preview --port 4173 &
-npm run test:e2e       # 24-step browser walkthrough plus light/dark, phone/desktop screenshots
+npm run test:e2e       # 28-step browser walkthrough (assistant included, AI server faked) plus light/dark, phone/desktop screenshots
 ```
 
 AI helper, keywords only, on the held-out set: 57.5% picked straight away and correct, 2.5% picked wrong

@@ -27,8 +27,29 @@ const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 const browser = await chromium.launch({ executablePath: EXE });
 let page;
 
+// Fake JiranLink AI server, so the assistant's AI path is tested without a real key.
+// Only used when the build points at an AI server (npm run build:pages); otherwise the app gives quick answers.
+async function mockAiServer(ctx) {
+  await ctx.route("**/*.workers.dev/**", async (route) => {
+    const url = route.request().url();
+    const body = JSON.parse(route.request().postData() || "{}");
+    const reply = (content) => route.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ content }) });
+    if (url.endsWith("/classify")) {
+      const plumbing = /pipe|paip|sinki/i.test(body.text || "");
+      return reply({ role: "model", parts: [{ text: JSON.stringify({ categories: plumbing ? [{ id: "plumbing", score: 0.9 }] : [], timeHint: null, online: false }) }] });
+    }
+    const last = body.contents.at(-1);
+    if (last.parts.some((p) => p.functionResponse)) return reply({ role: "model", parts: [{ text: "Here are neighbours who can help." }] });
+    const q = last.parts.map((p) => p.text || "").join(" ").toLowerCase();
+    if (q.includes("pipe")) return reply({ role: "model", parts: [{ functionCall: { name: "find_providers", args: { need: "fix pipes", category_id: "plumbing" } } }] });
+    if (q.includes("skill")) return reply({ role: "model", parts: [{ functionCall: { name: "get_help", args: { topic: "request_board" } } }] });
+    return reply({ role: "model", parts: [{ text: "I can only help with JiranLink." }] });
+  });
+}
+
 async function newPage(width, height, scheme = "light") {
   const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
+  await mockAiServer(ctx);
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !/tile|openstreetmap|ERR_|Failed to load resource/i.test(m.text())) errors.push(`[console] ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`[pageerror] ${e.message}`));
@@ -316,6 +337,39 @@ await step("Duplicate phone is rejected", async () => {
   await page.waitForSelector(".toast:has-text('already linked')");
 });
 
+await step("Ask JiranLink: find a plumber from a plain question", async () => {
+  await persona(page, "Mr Tan");
+  await page.locator(".assist-launch").click();
+  await page.waitForSelector(".assist-panel");
+  await page.locator(".assist-starter", { hasText: "leaking pipe" }).click();
+  await page.waitForSelector(".assist-reply .assist-row", { timeout: 8000 });
+  const cards = await page.locator(".assist-reply .assist-row").count();
+  expect(cards > 0, "no provider cards");
+  await shot(page, "11-assistant-phone");
+  await page.locator(".assist-reply .assist-row").first().click();
+  await page.waitForSelector(".profile-hero");
+  expect(await page.locator(".assist-panel").count() === 0, "panel should close on phone after navigating");
+});
+
+await step("Ask JiranLink: how-to question gives a button to the right screen", async () => {
+  await page.locator(".assist-launch").click();
+  await page.locator("#assist-q").fill("how do i ask for a skill that isn't listed?");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".assist-card:has-text('request board')", { timeout: 8000 });
+  await page.locator(".assist-card button", { hasText: "request board" }).click();
+  await page.waitForSelector("#req");
+});
+
+await step("Ask JiranLink: hidden on booking screens so it never covers buttons", async () => {
+  await persona(page, "Aisyah");
+  expect(await page.locator(".assist-launch").count() === 1, "launcher missing on Home");
+  await openBooking(page, "");
+  await page.waitForSelector(".steps, .status");
+  expect(await page.locator(".assist-launch").count() === 0, "launcher visible on booking page");
+  await persona(page, "Kak Ani");
+  expect(await page.locator(".assist-launch").count() === 0, "launcher visible in provider mode");
+});
+
 // ---------- Desktop and dark mode screenshots of every main screen ----------
 for (const [scheme, w, h] of [["light", 1366, 900], ["dark", 1366, 900], ["dark", 390, 844]]) {
   const p = await newPage(w, h, scheme);
@@ -346,8 +400,13 @@ for (const [scheme, w, h] of [["light", 1366, 900], ["dark", 1366, 900], ["dark"
 
 // Overflow check on every phone screen visited above
 await step("No horizontal scroll on phone", async () => {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  expect(!overflow, "page scrolls sideways");
+  const wide = await page.evaluate(() => {
+    if (document.documentElement.scrollWidth <= window.innerWidth + 1) return null;
+    const W = window.innerWidth, out = [];
+    document.querySelectorAll("body *").forEach((el) => { const x = el.getBoundingClientRect(); if (x.right > W + 1 && !el.closest(".marquee")) out.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(x.right)}`); });
+    return out.slice(0, 5).join("; ");
+  });
+  expect(!wide, `page scrolls sideways: ${wide}`);
 });
 
 await browser.close();

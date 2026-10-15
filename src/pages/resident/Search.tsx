@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Globe, Info, LayoutList, Map as MapIcon, Megaphone, Sparkles } from "lucide-react";
 import { HeroSearch } from "./Home";
+import { aiReady } from "../../ai/adapter";
 import { ProviderCard } from "../../components/ProviderCard";
 import { MapView, type MapPin } from "../../components/MapView";
 import { CatIcon, Empty, categoryName } from "../../components/ui";
@@ -28,7 +29,7 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
 
   // Ask the LLM only when keywords are not confident and a provider is configured.
   useEffect(() => {
-    if (!q || categoryIds || !agent || agent.decision.kind === "confident" || s.config.aiProvider === "none" || !s.config.aiKey) return;
+    if (!q || categoryIds || !agent || agent.decision.kind === "confident" || !aiReady(s.config)) return;
     let live = true;
     setThinking(true);
     understand(q, s.config).then((r) => {

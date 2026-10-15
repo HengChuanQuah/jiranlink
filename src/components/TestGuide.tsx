@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { Sheet } from "./ui";
 
-export const BUILD_LABEL = "Test build v1";
+export const BUILD_LABEL = "Test build v2";
 
 /** Floating "How to test" button with the demo script and codes, for team testing. */
 export function TestGuide() {
@@ -22,7 +22,8 @@ export function TestGuide() {
             <li><b>Kak Ani</b>: Job done. <b>Aisyah</b>: leave a review.</li>
             <li><b>Priya</b>: try <i>walk my dog</i>, then book Faizal for <i>aircond tak sejuk</i> to see the visitor pass and pay after.</li>
             <li><b>Mr Tan</b>: try <i>cuci rumah</i> and look for the "a bit further" card.</li>
-            <li><b>Township team</b>: approve residents, handle reports, change settings.</li>
+            <li><b>Ask JiranLink</b> (bottom right, as a resident): ask things like <i>paip bawah sinki bocor</i> or <i>how do I post a request?</i></li>
+            <li><b>Township team</b>: approve residents, handle reports, change settings, run the AI check.</li>
           </ol>
           <dl className="kv">
             <dt>Phone code</dt><dd className="tnum">123456</dd>

@@ -5,6 +5,7 @@ import {
 import { Avatar, Logo, Sheet, Toasts } from "./components/ui";
 import { PERSONAS } from "./data/seed";
 import { BUILD_LABEL, TestGuide } from "./components/TestGuide";
+import { Assistant } from "./components/Assistant";
 import { run } from "./lib/store";
 import { navigate, useRoute, type Route } from "./lib/router";
 import { firstName, unreadForUser, useMe } from "./lib/hooks";
@@ -171,7 +172,7 @@ function Page({ route }: { route: Route }) {
     case "booking": return <BookingDetail id={route.id} />;
     case "messages": return <Messages />;
     case "thread": return <Thread id={route.id} />;
-    case "requests": return <Requests />;
+    case "requests": return <Requests key={route.draft ?? ""} draft={route.draft} />;
     case "profile": return <Profile />;
     case "signup": return <Signup />;
     case "p-dashboard": return <Dashboard />;
@@ -203,6 +204,7 @@ export default function App() {
       </footer>
       <BottomNav />
       <TestGuide />
+      <Assistant />
       <Toasts />
     </div>
   );

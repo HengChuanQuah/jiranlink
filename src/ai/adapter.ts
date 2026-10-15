@@ -1,9 +1,11 @@
 // The one doorway for all LLM calls. The rest of the app never knows which company's model is used.
-// Switch provider in Admin > Settings (or VITE_AI_PROVIDER). In production, move these calls to a
-// server function so the API key is never exposed to the browser.
+// Recommended: "proxy" = the JiranLink AI server (worker/worker.js on Cloudflare), which holds the key.
+// "gemini" / "claude" call the provider straight from the browser: only for a demo on your own laptop,
+// because anyone using the app could read the key.
 
 import { CATEGORIES } from "../data/categories";
-import type { AiProvider } from "../data/types";
+import type { AiProvider, Config } from "../data/types";
+import { AGENT_PROMPT, AGENT_TOOLS, CLASSIFY_PROMPT, DEFAULT_GEMINI_MODEL } from "./spec";
 
 export interface LlmClassification {
   categories: { id: string; score: number }[];
@@ -15,24 +17,27 @@ export interface LlmSettings {
   provider: AiProvider;
   model: string;
   apiKey: string;
+  proxyUrl?: string;
 }
 
-export const DEFAULT_MODELS: Record<Exclude<AiProvider, "none">, string> = {
+export const DEFAULT_MODELS: Record<Exclude<AiProvider, "none" | "proxy">, string> = {
   // Model names change often. Check the provider's model list and update these if a call fails.
-  gemini: "gemini-2.5-flash",
+  gemini: DEFAULT_GEMINI_MODEL,
   claude: "claude-haiku-5-5",
 };
 
-const CATEGORY_LIST = CATEGORIES.map((c) => `${c.id}: ${c.name}`).join("\n");
+export const settingsFrom = (cfg: Config): LlmSettings => ({ provider: cfg.aiProvider, model: cfg.aiModel, apiKey: cfg.aiKey, proxyUrl: cfg.aiProxyUrl });
 
-const SYSTEM_PROMPT = `You classify short service requests from residents of Malaysian housing townships.
-Requests may be in English, Bahasa Malaysia, Chinese, or Manglish, and may describe a problem instead of naming a service.
-Pick up to 3 categories from this list only, with a confidence score from 0 to 1 for each:
-${CATEGORY_LIST}
-Also extract any time preference as short English text (e.g. "Saturday morning"), or null.
-Set online to true only if the person asks for an online or remote service.
-Never invent categories. Reply with JSON only, in this shape:
-{"categories":[{"id":"plumbing","score":0.9}],"timeHint":null,"online":false}`;
+/** True when an AI is configured and reachable in principle. */
+export function aiReady(cfg: Config | LlmSettings): boolean {
+  const s = "aiProvider" in cfg ? settingsFrom(cfg) : cfg;
+  if (s.provider === "proxy") return !!s.proxyUrl;
+  if (s.provider === "gemini" || s.provider === "claude") return !!s.apiKey;
+  return false;
+}
+
+/** True when the configured AI can run the assistant (tool calling is wired for the AI server and Gemini). */
+export const assistantReady = (cfg: Config) => aiReady(cfg) && cfg.aiProvider !== "claude";
 
 function parseJson(text: string): LlmClassification {
   const start = text.indexOf("{");
@@ -47,22 +52,31 @@ function parseJson(text: string): LlmClassification {
   return { categories, timeHint: typeof raw.timeHint === "string" ? raw.timeHint : null, online: !!raw.online };
 }
 
-async function callGemini(text: string, s: LlmSettings): Promise<LlmClassification> {
-  const model = s.model || DEFAULT_MODELS.gemini;
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(s.apiKey)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: { temperature: 0, responseMimeType: "application/json" },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini returned ${res.status}. Check the API key and model name.`);
-  const data = await res.json();
-  const out = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-  return parseJson(out);
+const textOf = (content: GeminiContent | undefined) => (content?.parts ?? []).map((p) => p.text ?? "").join("");
+
+async function postJson(url: string, body: unknown, timeoutMs: number): Promise<any> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data?.error || `The AI server returned ${res.status}.`) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw new Error("The AI took too long to answer.");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
+
+const proxyBase = (s: LlmSettings) => (s.proxyUrl ?? "").replace(/\/+$/, "");
+const geminiUrl = (s: LlmSettings) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(s.model || DEFAULT_GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(s.apiKey)}`;
 
 async function callClaude(text: string, s: LlmSettings): Promise<LlmClassification> {
   const model = s.model || DEFAULT_MODELS.claude;
@@ -72,23 +86,66 @@ async function callClaude(text: string, s: LlmSettings): Promise<LlmClassificati
       "Content-Type": "application/json",
       "x-api-key": s.apiKey,
       "anthropic-version": "2023-06-01",
-      // Needed for direct browser calls in a demo. Use a server route in production.
+      // Needed for direct browser calls in a demo. Use the AI server in production.
       "anthropic-dangerous-direct-browser-access": "true",
     },
-    body: JSON.stringify({ model, max_tokens: 300, temperature: 0, system: SYSTEM_PROMPT, messages: [{ role: "user", content: text }] }),
+    body: JSON.stringify({ model, max_tokens: 300, temperature: 0, system: CLASSIFY_PROMPT, messages: [{ role: "user", content: text }] }),
   });
   if (!res.ok) throw new Error(`Claude returned ${res.status}. Check the API key and model name.`);
   const data = await res.json();
-  const out = (data?.content ?? []).map((b: { text?: string }) => b.text ?? "").join("");
-  return parseJson(out);
+  return parseJson((data?.content ?? []).map((b: { text?: string }) => b.text ?? "").join(""));
 }
 
-/** Classify with the configured LLM. Returns null when no provider is configured. */
+/** Classify a search with the configured LLM. Returns null when no AI is configured. */
 export async function classifyWithLlm(text: string, s: LlmSettings): Promise<LlmClassification | null> {
-  if (s.provider === "none" || !s.apiKey) return null;
-  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("The AI took too long to answer.")), 8000));
-  const call = s.provider === "gemini" ? callGemini(text, s) : callClaude(text, s);
-  return Promise.race([call, timeout]);
+  if (!aiReady(s)) return null;
+  if (s.provider === "proxy") {
+    const data = await postJson(`${proxyBase(s)}/classify`, { text }, 15000);
+    return parseJson(textOf(data.content));
+  }
+  if (s.provider === "gemini") {
+    const data = await postJson(geminiUrl(s), {
+      systemInstruction: { parts: [{ text: CLASSIFY_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    }, 15000);
+    return parseJson(textOf(data?.candidates?.[0]?.content));
+  }
+  return callClaude(text, s);
+}
+
+// ---------- Assistant (tool calling) ----------
+
+export interface GeminiPart {
+  text?: string;
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+  thoughtSignature?: string;
+  thought?: boolean;
+}
+export interface GeminiContent {
+  role: "user" | "model";
+  parts: GeminiPart[];
+}
+
+/** One model turn of the assistant. The caller runs any tools the model asks for and calls again. */
+export async function agentTurn(contents: GeminiContent[], s: LlmSettings): Promise<GeminiContent> {
+  if (s.provider === "proxy") {
+    const data = await postJson(`${proxyBase(s)}/agent`, { contents }, 25000);
+    if (!data?.content) throw new Error("The AI server sent an empty answer.");
+    return data.content as GeminiContent;
+  }
+  if (s.provider === "gemini") {
+    const data = await postJson(geminiUrl(s), {
+      systemInstruction: { parts: [{ text: AGENT_PROMPT }] },
+      tools: [{ functionDeclarations: AGENT_TOOLS }],
+      contents,
+    }, 25000);
+    const content = data?.candidates?.[0]?.content;
+    if (!content) throw new Error("The AI sent an empty answer.");
+    return { role: "model", parts: content.parts ?? [] };
+  }
+  throw new Error("The assistant needs the JiranLink AI server or a Gemini key.");
 }
 
 export { parseJson as _parseJsonForTests };

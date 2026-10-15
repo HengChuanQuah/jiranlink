@@ -217,7 +217,7 @@ export interface GatePass {
   validTo: string;
 }
 
-export type AiProvider = "none" | "gemini" | "claude";
+export type AiProvider = "none" | "proxy" | "gemini" | "claude";
 
 export interface Config {
   qualityFloor: number;
@@ -239,6 +239,7 @@ export interface Config {
   aiProvider: AiProvider;
   aiModel: string;
   aiKey: string;
+  aiProxyUrl: string; // JiranLink AI server (Cloudflare Worker) that holds the key
   mapsKey: string;
 }
 

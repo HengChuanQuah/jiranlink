@@ -9,7 +9,7 @@ export type Route =
   | { name: "booking"; id: string }
   | { name: "messages" }
   | { name: "thread"; id: string }
-  | { name: "requests" }
+  | { name: "requests"; draft?: string }
   | { name: "profile" }
   | { name: "signup" }
   | { name: "p-dashboard" }

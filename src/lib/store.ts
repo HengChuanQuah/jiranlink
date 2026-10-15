@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { buildSeed } from "../data/seed";
+import { buildSeed, DEFAULT_CONFIG } from "../data/seed";
 import type { AppState } from "../data/types";
 import { expireHolds } from "./domain";
 
@@ -10,7 +10,14 @@ function load(): AppState | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AppState;
-    return parsed.version === 4 ? parsed : null;
+    if (parsed.version !== 4) return null;
+    // Saved before the AI server existed: pick up the new defaults without wiping the tester's data.
+    if (parsed.config.aiProxyUrl === undefined) {
+      parsed.config.aiProxyUrl = DEFAULT_CONFIG.aiProxyUrl;
+      if (parsed.config.aiProvider === "none") parsed.config.aiProvider = DEFAULT_CONFIG.aiProvider;
+      if (parsed.config.aiModel === "gemini-2.5-flash") parsed.config.aiModel = "";
+    }
+    return parsed;
   } catch {
     return null;
   }

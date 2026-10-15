@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "build:artifact": "vite build --mode single && node scripts/make-artifact.mjs",
     "test:e2e": "node tests/e2e.mjs",
-    "build:pages": "tsc --noEmit && vite build --mode pages && node -e \"require('fs').writeFileSync('dist-pages/.nojekyll','')\""
+    "build:pages": "tsc --noEmit && vite build --mode pages && node -e \"require('fs').writeFileSync('dist-pages/.nojekyll','')\"",
+    "build:worker": "tsx scripts/build-worker.ts",
+    "deploy:pages": "bash scripts/deploy-pages.sh"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

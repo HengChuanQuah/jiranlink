@@ -3,7 +3,7 @@
 
 import { CATEGORIES, GROUPS, categoryById, type CategoryGroup } from "../data/categories";
 import type { Config } from "../data/types";
-import { classifyWithLlm, type LlmClassification } from "./adapter";
+import { aiReady, classifyWithLlm, settingsFrom, type LlmClassification } from "./adapter";
 import { extractHints, type Hints } from "./hints";
 import { keywordScores, type CategoryScore } from "./keywords";
 
@@ -65,9 +65,9 @@ export function understandFast(text: string, th: Thresholds): AgentResult {
 export async function understand(text: string, cfg: Config): Promise<AgentResult> {
   const th = thresholdsFrom(cfg);
   const fast = understandFast(text, th);
-  if (fast.decision.kind === "confident" || cfg.aiProvider === "none" || !cfg.aiKey) return fast;
+  if (fast.decision.kind === "confident" || !aiReady(cfg)) return fast;
   try {
-    const llm = await classifyWithLlm(text, { provider: cfg.aiProvider, model: cfg.aiModel, apiKey: cfg.aiKey });
+    const llm = await classifyWithLlm(text, settingsFrom(cfg));
     if (!llm || !llm.categories.length) return { ...fast, usedLlm: true };
     const agree = !!fast.scores[0] && fast.scores[0].id === llm.categories[0].id && llm.categories[0].score >= 0.6;
     const merged = fast.scores.length ? merge(fast.scores, llm) : llm.categories.map((c) => ({ ...c, matched: [] }));

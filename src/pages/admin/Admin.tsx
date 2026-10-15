@@ -9,6 +9,7 @@ import { resolveReport, setProviderHidden, setVerification, updateConfig } from 
 import { zonesFor } from "../../lib/geo";
 import { timeAgo, rm } from "../../lib/time";
 import { DEFAULT_MODELS } from "../../ai/adapter";
+import { AiCheck } from "./AiCheck";
 import type { AiProvider, Config } from "../../data/types";
 
 const TABS = [
@@ -224,18 +225,26 @@ function SettingsTab() {
         </div>
         <div className="form-grid">
           <div className="field">
-            <label htmlFor="cfg-ai">Language model fallback</label>
-            <select id="cfg-ai" className="input" value={c.aiProvider} onChange={(e) => { const v = e.target.value as AiProvider; setC({ ...c, aiProvider: v, aiModel: v === "none" ? "" : DEFAULT_MODELS[v] }); }}>
+            <label htmlFor="cfg-ai">Language model</label>
+            <select id="cfg-ai" className="input" value={c.aiProvider} onChange={(e) => { const v = e.target.value as AiProvider; setC({ ...c, aiProvider: v, aiModel: v === "gemini" || v === "claude" ? DEFAULT_MODELS[v] : "" }); }}>
               <option value="none">Off (keywords only)</option>
-              <option value="gemini">Gemini Flash</option>
-              <option value="claude">Claude Haiku</option>
+              <option value="proxy">JiranLink AI server (recommended)</option>
+              <option value="gemini">Gemini, key in this browser</option>
+              <option value="claude">Claude, key in this browser (search only)</option>
             </select>
           </div>
-          <div className="field"><label htmlFor="cfg-model">Model</label><input id="cfg-model" className="input" value={c.aiModel} disabled={c.aiProvider === "none"} onChange={(e) => setC({ ...c, aiModel: e.target.value })} /></div>
-          <div className="field"><label htmlFor="cfg-key">API key</label><input id="cfg-key" className="input" type="password" autoComplete="off" value={c.aiKey} disabled={c.aiProvider === "none"} onChange={(e) => setC({ ...c, aiKey: e.target.value })} /></div>
+          {c.aiProvider === "proxy" ? (
+            <div className="field" style={{ gridColumn: "span 2" }}><label htmlFor="cfg-proxy">AI server address</label><input id="cfg-proxy" className="input" value={c.aiProxyUrl} placeholder="https://jiranlink-ai.<name>.workers.dev" onChange={(e) => setC({ ...c, aiProxyUrl: e.target.value.trim() })} /></div>
+          ) : (
+            <>
+              <div className="field"><label htmlFor="cfg-model">Model</label><input id="cfg-model" className="input" value={c.aiModel} disabled={c.aiProvider === "none"} onChange={(e) => setC({ ...c, aiModel: e.target.value })} /></div>
+              <div className="field"><label htmlFor="cfg-key">API key</label><input id="cfg-key" className="input" type="password" autoComplete="off" value={c.aiKey} disabled={c.aiProvider === "none"} onChange={(e) => setC({ ...c, aiKey: e.target.value })} /></div>
+            </>
+          )}
         </div>
-        <p className="hint">Keys entered here stay in this browser and are for demo use. In production the key lives on the server, never in the app.</p>
+        <p className="hint">The AI server keeps the key on Cloudflare, so nobody using the app can see it. A key typed here stays in this browser and anyone with access to it could read it; use that only on your own laptop.</p>
       </section>
+      <AiCheck />
       <section className="card stack-sm">
         <h2 className="section-title" style={{ fontSize: 16 }}>Maps</h2>
         <div className="field"><label htmlFor="cfg-maps">Google Maps JavaScript API key</label><input id="cfg-maps" className="input" type="password" autoComplete="off" value={c.mapsKey} onChange={(e) => setC({ ...c, mapsKey: e.target.value })} /><span className="hint">Leave blank to use OpenStreetMap.</span></div>
