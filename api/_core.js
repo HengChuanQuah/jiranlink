@@ -86,26 +86,32 @@ function cleanContents(contents) {
 
 async function gemini(env, body) {
   const models = [env.GEMINI_MODEL || DEFAULT_MODEL];
-  if (!env.GEMINI_MODEL) models.push(FALLBACK_MODEL);
-  let last = "";
+  if (!env.GEMINI_MODEL || env.GEMINI_MODEL !== FALLBACK_MODEL) models.push(FALLBACK_MODEL);
+  let last = "", lastStatus = 502;
   for (const model of models) {
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      const content = data?.candidates?.[0]?.content;
-      if (!content) throw Object.assign(new Error("Gemini returned no answer (" + (data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "empty") + ")."), { status: 502 });
-      return { content: { role: "model", parts: content.parts ?? [] }, model };
+    // Busy (500/503): wait briefly and retry once. Busy again, out of quota (429) or unavailable: next model.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const content = data?.candidates?.[0]?.content;
+        if (!content) throw Object.assign(new Error("Gemini returned no answer (" + (data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "empty") + ")."), { status: 502 });
+        return { content: { role: "model", parts: content.parts ?? [] }, model };
+      }
+      last = "Gemini error " + res.status + ": " + (data?.error?.message || "").slice(0, 200);
+      lastStatus = res.status === 429 ? 429 : res.status === 503 || res.status === 500 ? 503 : 502;
+      const busy = res.status === 500 || res.status === 503;
+      if (busy && attempt === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
+      const tryNext = busy || res.status === 429 || res.status === 404 || res.status === 403 || (res.status === 400 && /model/i.test(last));
+      if (tryNext) break;
+      throw Object.assign(new Error(last), { status: lastStatus });
     }
-    last = (data?.error?.message || "").slice(0, 200);
-    // Try the fallback model only when this model is unknown or not available to this key.
-    if (res.status === 404 || (res.status === 400 && /model/i.test(last)) || res.status === 403) continue;
-    throw Object.assign(new Error("Gemini error " + res.status + ": " + last), { status: res.status === 429 ? 429 : 502 });
   }
-  throw Object.assign(new Error("No Gemini model available to this key: " + last), { status: 502 });
+  throw Object.assign(new Error(last || "No Gemini model available."), { status: lastStatus });
 }
 
 async function handle(request, env) {

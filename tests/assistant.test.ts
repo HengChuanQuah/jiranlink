@@ -191,3 +191,19 @@ describe("AI server on Vercel (api/*.js)", () => {
     delete process.env.GEMINI_API_KEY;
   });
 });
+
+describe("AI server handles a busy model", () => {
+  it("retries once, then falls back to the lighter model", async () => {
+    // @ts-expect-error plain JS module
+    const { handle } = await import("../api/_core.js");
+    const busy = () => new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 });
+    const good = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }), { status: 200 });
+    const f = vi.fn().mockImplementationOnce(async () => busy()).mockImplementationOnce(async () => busy()).mockImplementation(async () => good());
+    vi.stubGlobal("fetch", f);
+    const res = await handle(new Request("https://x/api/check", { headers: { "x-forwarded-for": "4.4.4.4" } }), { GEMINI_API_KEY: "k" });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(body.model).toContain("flash-lite");
+  });
+});
