@@ -56,6 +56,9 @@ function cors(origin, env) {
   };
 }
 
+// Which Cloudflare data centre and visitor country handled the request (for diagnosing region blocks).
+const where = (request) => (request.cf ? (request.cf.colo || "?") + " data centre, visitor in " + (request.cf.country || "?") : "unknown");
+
 const json = (body, status, headers) => new Response(JSON.stringify(body), { status, headers: { ...headers, "Content-Type": "application/json" } });
 
 // Only pass through the parts Gemini needs, with size caps, so the server can't be used as a general chatbot.
@@ -127,7 +130,7 @@ export default {
           generationConfig: { responseMimeType: "application/json" },
         });
         const answer = (r.content.parts || []).map((p) => p.text || "").join("");
-        return json({ ok: true, model: r.model, test: "aircond bocor air", answer }, 200, headers);
+        return json({ ok: true, model: r.model, test: "aircond bocor air", answer, ranFrom: where(request) }, 200, headers);
       }
 
       if (request.method !== "POST") return json({ error: "Not found." }, 404, headers);
@@ -159,7 +162,11 @@ export default {
 
       return json({ error: "Not found." }, 404, headers);
     } catch (e) {
-      return json({ error: e.message || "AI server error." }, e.status || 400, headers);
+      const msg = e.message || "AI server error.";
+      const hint = /location is not supported/i.test(msg)
+        ? " Google blocked the Cloudflare data centre this ran from (" + where(request) + "). Turn off any VPN and try again, or turn on Smart Placement in the Worker's settings."
+        : "";
+      return json({ error: msg + hint, ranFrom: where(request) }, e.status || 400, headers);
     }
   },
 };
