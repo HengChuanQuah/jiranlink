@@ -234,7 +234,7 @@ function SettingsTab() {
             </select>
           </div>
           {c.aiProvider === "proxy" ? (
-            <div className="field" style={{ gridColumn: "span 2" }}><label htmlFor="cfg-proxy">AI server address</label><input id="cfg-proxy" className="input" value={c.aiProxyUrl} placeholder="https://jiranlink-ai.<name>.workers.dev" onChange={(e) => setC({ ...c, aiProxyUrl: e.target.value.trim() })} /></div>
+            <div className="field" style={{ gridColumn: "span 2" }}><label htmlFor="cfg-proxy">AI server address</label><input id="cfg-proxy" className="input" value={c.aiProxyUrl} placeholder="https://<project>.vercel.app/api" onChange={(e) => setC({ ...c, aiProxyUrl: e.target.value.trim() })} /></div>
           ) : (
             <>
               <div className="field"><label htmlFor="cfg-model">Model</label><input id="cfg-model" className="input" value={c.aiModel} disabled={c.aiProvider === "none"} onChange={(e) => setC({ ...c, aiModel: e.target.value })} /></div>

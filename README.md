@@ -88,7 +88,11 @@ All thresholds are in `src/data/seed.ts` (`DEFAULT_CONFIG`) and editable in Admi
 
 ### The AI server (keeps the key off the website)
 
-`worker/worker.js` is a Cloudflare Worker that holds the Gemini key. Rebuild it after changing `src/ai/spec.ts`
+The AI server holds the Gemini key. It runs on **Vercel** (`api/`, region pinned to Singapore `sin1` in `vercel.json`),
+because Gemini refuses some locations: Cloudflare routed Malaysian traffic through Hong Kong, which Gemini blocks.
+Import this repo into Vercel, add the `GEMINI_API_KEY` environment variable, deploy, and open
+`https://<project>.vercel.app/api/check`. Set `VITE_AI_PROXY_URL` in `.env.pages` to `https://<project>.vercel.app/api`.
+`worker/worker.js` is the same server as a Cloudflare Worker, for regions where that works. Rebuild it after changing `src/ai/spec.ts`
 or the categories:
 
 ```bash
