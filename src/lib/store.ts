@@ -17,6 +17,8 @@ function load(): AppState | null {
       if (parsed.config.aiProvider === "none") parsed.config.aiProvider = DEFAULT_CONFIG.aiProvider;
       if (parsed.config.aiModel === "gemini-2.5-flash") parsed.config.aiModel = "";
     }
+    // The first test of v2 used a Cloudflare Worker that Gemini blocks from Malaysia; move to the current server.
+    if (/workers\.dev/.test(parsed.config.aiProxyUrl) && DEFAULT_CONFIG.aiProxyUrl) parsed.config.aiProxyUrl = DEFAULT_CONFIG.aiProxyUrl;
     return parsed;
   } catch {
     return null;
