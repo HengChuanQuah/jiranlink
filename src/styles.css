@@ -524,32 +524,18 @@ button.assist-row:hover { border-color: var(--red); }
 @keyframes jl-fade-out { to { opacity: 0; } }
 @keyframes jl-fade-up { from { opacity: 0; transform: translateY(14px); } }
 
-/* ---------- Moving orange band, pinned to the bottom like the SDP website ---------- */
-.app.has-ribbon { --ribbon-h: 30px; }
-@media (min-width: 900px) { .app.has-ribbon { --ribbon-h: 42px; padding-bottom: var(--ribbon-h); } }
-.ribbon { position: fixed; left: 0; right: 0; z-index: 58; height: calc(var(--ribbon-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px);
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px)); background: var(--grad); color: #fff; overflow: hidden; display: flex; align-items: center;
-  box-shadow: 0 -6px 18px rgba(225, 37, 27, 0.18); }
-@media (max-width: 899px) { .ribbon { height: var(--ribbon-h); padding-bottom: 0; } }
-@media (min-width: 900px) { .ribbon { bottom: 0; } }
-.ribbon-track { display: inline-flex; white-space: nowrap; will-change: transform; font-family: var(--font-display); font-weight: 800; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
-@media (min-width: 900px) { .ribbon-track { font-size: 15px; } }
+/* ---------- Moving orange band under the home search, like pitch-side boards ---------- */
+.ribbon { position: relative; z-index: 2; height: 44px; background: var(--grad); color: #fff; overflow: hidden; display: flex; align-items: center; cursor: default;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25); }
+@media (min-width: 900px) { .ribbon { height: 50px; } }
+.ribbon-track { display: inline-flex; white-space: nowrap; will-change: transform; font-family: var(--font-display); font-weight: 800; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
+@media (min-width: 900px) { .ribbon-track { font-size: 16px; } }
 .ribbon-set { display: inline-flex; }
-.ribbon-item { display: inline-flex; align-items: center; gap: 22px; padding-right: 26px; }
+.ribbon-item { display: inline-flex; align-items: center; gap: 22px; padding-right: 28px; }
 .ribbon-badge { display: none; }
 @media (min-width: 900px) {
   .ribbon-badge { display: grid; place-items: center; position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; padding: 0 22px 0 max(16px, env(safe-area-inset-left, 0px));
     background: #fff; border-radius: 0 999px 999px 0; box-shadow: 6px 0 18px rgba(0,0,0,0.12); }
-}
-@media (prefers-reduced-motion: reduce) { .ribbon-track { padding-left: 16px; } }
-main.page { padding-bottom: calc(110px + var(--ribbon-h, 0px)); }
-@media (min-width: 900px) { main.page { padding-bottom: 56px; } }
-.app.has-ribbon .test-pill, .app.has-ribbon .assist-launch, .app.has-ribbon .toasts { bottom: calc(76px + var(--ribbon-h) + env(safe-area-inset-bottom, 0px)); }
-.app.has-ribbon .crash-compact { bottom: calc(76px + var(--ribbon-h) + env(safe-area-inset-bottom, 0px)); }
-@media (min-width: 900px) {
-  .app.has-ribbon .test-pill { bottom: calc(20px + var(--ribbon-h)); }
-  .app.has-ribbon .assist-launch, .app.has-ribbon .crash-compact { bottom: calc(24px + var(--ribbon-h)); }
-  .app.has-ribbon .toasts { bottom: calc(28px + var(--ribbon-h)); }
 }
 
 /* ---------- Scroll motion ---------- */
@@ -565,9 +551,9 @@ main.page { padding-bottom: calc(110px + var(--ribbon-h, 0px)); }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; max-width: none; }
 .hero-photo img { animation: jl-kenburns 24s ease-in-out infinite alternate; transform-origin: 60% 50%; }
 @keyframes jl-kenburns { from { transform: scale(1.04); } to { transform: scale(1.14) translate3d(-1.5%, -1%, 0); } }
-.hero-inner { will-change: transform, opacity; padding-block: calc(var(--header-h) + 40px) 76px; }
+.hero-inner { will-change: transform, opacity; padding-block: calc(var(--header-h) + 40px) 56px; }
 .hero::after { z-index: 0; background: linear-gradient(180deg, rgba(11,17,23,0.82) 0%, rgba(11,17,23,0.42) 45%, rgba(11,17,23,0.8) 100%); }
-.hero-credit { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 40px; z-index: 1; font-size: 10.5px; color: rgba(255,255,255,0.7); display: none; }
+.hero-credit { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 58px; z-index: 1; font-size: 10.5px; color: rgba(255,255,255,0.7); display: none; }
 .hero:has(.hero-photo.ok) .hero-credit { display: block; }
 .hero-curve { position: absolute; left: 0; right: 0; bottom: -1px; height: 34px; z-index: 1; background: var(--bg); border-radius: 50% 50% 0 0 / 100% 100% 0 0; }
 .tcard .photo img { transition: transform 0.8s cubic-bezier(.2,.7,.2,1); }

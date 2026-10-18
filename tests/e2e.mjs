@@ -290,16 +290,19 @@ await step("Map can be hidden for a list-only view", async () => {
   await page.waitForSelector(".map-box.big");
 });
 
-await step("Orange band is pinned to the bottom and moves", async () => {
+await step("Orange band sits under the home search and runs left to right", async () => {
   await nav(page, "Home");
-  await page.waitForSelector(".ribbon");
-  const a = await page.locator(".ribbon-track").evaluate((el) => getComputedStyle(el).transform);
-  await page.waitForTimeout(400);
-  const b = await page.locator(".ribbon-track").evaluate((el) => getComputedStyle(el).transform);
-  expect(a !== b, "band is not moving");
-  const box = await page.locator(".ribbon").boundingBox();
-  const bar = await page.locator(".bottom-nav").boundingBox();
-  expect(Math.abs(box.y + box.height - bar.y) <= 4, `band should sit on the bottom nav (band ends ${box.y + box.height}, nav at ${bar.y})`);
+  await page.waitForSelector(".hero .ribbon");
+  const x = () => page.locator(".ribbon-track").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m41);
+  const a = await x();
+  await page.waitForTimeout(500);
+  const b = await x();
+  expect(b > a || b < a - 200, `band is not moving left to right (${a} then ${b})`);
+  const band = await page.locator(".ribbon").boundingBox();
+  const pill = await page.locator(".hero .search-pill").boundingBox();
+  expect(band.y > pill.y + pill.height, "band should be below the search bar");
+  await search(page, "aircond");
+  expect(await page.locator(".ribbon").count() === 0, "band should only be on Home");
 });
 
 await step("Sections pop up as you scroll", async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Mic, Search as SearchIcon, ShieldAlert, Wallet } from "lucide-react";
 import { AerialCanvas } from "../../components/ui";
+import { Ribbon } from "../../components/Ribbon";
 import { ProviderCard } from "../../components/ProviderCard";
 import { TOWNSHIPS } from "../../data/geo";
 import { TOWNSHIP_CARD_PHOTOS, TOWNSHIP_PHOTOS } from "../../data/photos";
@@ -128,7 +129,7 @@ export function Home() {
           <button className="hero-link" onClick={() => navigate({ name: "search" })}>Or browse all services <ArrowRight size={15} /></button>
         </div>
         {photo && <span className="hero-credit">Photo: {township?.name}, {photo.credit}</span>}
-        <div className="hero-curve" aria-hidden />
+        <Ribbon />
       </section>
 
       <main className="page">
