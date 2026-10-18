@@ -47,9 +47,29 @@ async function mockAiServer(ctx) {
   });
 }
 
+// Stand-in for the Google Maps script, so the Google map code path runs without reaching Google.
+// Used only by builds that carry a Maps key (npm run build:pages). Markers are laid out in a row so they can be clicked.
+const FAKE_GOOGLE_MAPS = `(() => {
+  const listeners = (o) => (o.__l ??= {});
+  class MVC { addListener(ev, fn) { (listeners(this)[ev] ??= []).push(fn); return { remove() {} }; } fire(ev) { (listeners(this)[ev] ?? []).forEach((f) => f()); } setMap(m) { this.map = m; } setOptions(o) { Object.assign(this, o); } }
+  class Map extends MVC { constructor(div, opts) { super(); this.div = div; this.opts = opts; div.classList.add("fake-gmap"); this.layer = document.createElement("div"); this.layer.className = "fake-gmap-layer"; this.layer.style.cssText = "display:flex;gap:30px;padding:90px 20px 0 60px"; div.appendChild(this.layer); window.__gmapsCreated = (window.__gmapsCreated ?? 0) + 1; }
+    fitBounds() {} setCenter() {} setZoom() {} panTo() { window.__gmapsPanned = (window.__gmapsPanned ?? 0) + 1; } }
+  class AdvancedMarkerElement extends MVC {
+    constructor(o) { super(); Object.assign(this, o); this._map = null; this.map = o.map; }
+    set map(m) { if (this.content) { this.content.remove(); if (m) { m.layer.appendChild(this.content); this.content.onclick = () => this.fire("click"); } } this._map = m; }
+    get map() { return this._map; } }
+  class Circle extends MVC { constructor(o) { super(); Object.assign(this, o); } }
+  class Polygon extends MVC { constructor(o) { super(); Object.assign(this, o); } }
+  class LatLngBounds { extend() { return this; } }
+  window.google = { maps: { LatLngBounds, importLibrary: async (n) => (n === "marker" ? { AdvancedMarkerElement } : { Map, Circle, Polygon }) } };
+  const cb = new URL(document.currentScript.src).searchParams.get("callback");
+  setTimeout(() => window[cb] && window[cb](), 30);
+})();`;
+
 async function newPage(width, height, scheme = "light") {
   const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
   await mockAiServer(ctx);
+  await ctx.route((u) => u.hostname === "maps.googleapis.com", (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_GOOGLE_MAPS }));
   // Behave like Chrome 155+: scrollIntoView returns a Promise. This is what crashed teammates' pages.
   await ctx.addInitScript(() => {
     const o = Element.prototype.scrollIntoView;
@@ -71,16 +91,19 @@ async function persona(page, label) {
 async function nav(page, label) {
   const re = new RegExp(`^\\s*${label}\\s*\\d*\\s*$`);
   const bottom = page.locator(".bottom-nav button").filter({ hasText: re });
-  if (await bottom.first().isVisible().catch(() => false)) return bottom.first().click();
-  await page.locator(".nav-links button").filter({ hasText: re }).first().click();
+  if (await bottom.first().isVisible().catch(() => false)) await bottom.first().click();
+  else await page.locator(".nav-links button").filter({ hasText: re }).first().click();
+  await settle(page);
 }
+// Search screens animate in with a view transition; the old screen stays on show until it ends.
+const settle = (page) => page.waitForTimeout(450);
 async function search(page, q) {
   // Search starts from the box on Home; there is no separate Search tab.
   await nav(page, "Home");
   const input = page.locator("form.search-pill input").first();
   await input.fill(q);
   await input.press("Enter");
-  await page.waitForTimeout(200);
+  await settle(page);
 }
 async function openBooking(page, text, status) {
   await nav(page, page.url() && (await page.locator(".bottom-nav button", { hasText: "Jobs" }).count()) ? "Jobs" : "Bookings");
@@ -117,6 +140,7 @@ await step("Home renders hero and categories", async () => {
   expect((await page.locator(".cat-tile").count()) === 0, "services grid should be gone from Home");
   expect(await page.locator(".hero-link", { hasText: "Browse all services" }).count() === 1, "browse-all link missing");
   await page.locator(".hero-link").click();
+  await page.waitForSelector(".cat-tile");
   expect((await page.locator(".cat-tile").count()) > 10, "all-services page empty");
   await nav(page, "Home");
   await shot(page, "01-home-phone");
@@ -242,12 +266,50 @@ await step("Online services from other townships reach Aisyah", async () => {
   expect(await page.locator(".pcard", { hasText: "Cikgu Aina" }).count() > 0, "Melawati online tutor missing for Elmina resident");
 });
 
-await step("Map view toggles without errors", async () => {
+await step("Map-first search: price pins, tap a pin for its card", async () => {
   await search(page, "aircond");
-  await page.locator(".seg button", { hasText: "Map" }).click();
-  await page.waitForSelector(".map-box");
-  await page.waitForTimeout(600);
+  await page.waitForSelector(".map-box.big");
+  await page.waitForSelector(".mpin");
+  expect(await page.locator(".map-home").count() === 1, "home marker missing");
+  const first = page.locator(".mpin").first();
+  expect(/RM/.test(await first.innerText()), "pin has no price");
+  await first.click();
+  await page.waitForSelector(".map-card");
+  expect(await page.locator(".mpin.sel").count() === 1, "tapped pin not highlighted");
+  await page.waitForTimeout(400);
   await shot(page, "08-map-phone");
+  await page.locator(".map-card button", { hasText: "View profile" }).click();
+  await page.waitForSelector(".profile-hero");
+});
+
+await step("Map can be hidden for a list-only view", async () => {
+  await search(page, "aircond");
+  await page.locator(".seg button", { hasText: "List only" }).click();
+  expect(await page.locator(".map-box.big").count() === 0, "map still shown");
+  await page.locator(".seg button", { hasText: "Map" }).click();
+  await page.waitForSelector(".map-box.big");
+});
+
+await step("Orange band is pinned to the bottom and moves", async () => {
+  await nav(page, "Home");
+  await page.waitForSelector(".ribbon");
+  const a = await page.locator(".ribbon-track").evaluate((el) => getComputedStyle(el).transform);
+  await page.waitForTimeout(400);
+  const b = await page.locator(".ribbon-track").evaluate((el) => getComputedStyle(el).transform);
+  expect(a !== b, "band is not moving");
+  const box = await page.locator(".ribbon").boundingBox();
+  const bar = await page.locator(".bottom-nav").boundingBox();
+  expect(Math.abs(box.y + box.height - bar.y) <= 4, `band should sit on the bottom nav (band ends ${box.y + box.height}, nav at ${bar.y})`);
+});
+
+await step("Sections pop up as you scroll", async () => {
+  await nav(page, "Home");
+  const cards = page.locator(".township-cards");
+  expect(!(await cards.evaluate((el) => el.classList.contains("in"))), "township cards revealed before scrolling");
+  await cards.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(900);
+  expect(await cards.evaluate((el) => el.classList.contains("in")), "township cards did not reveal");
+  await page.evaluate(() => window.scrollTo(0, 0));
 });
 
 await step("Request board: post with AI tag", async () => {
@@ -375,6 +437,7 @@ await step("Ask JiranLink: hidden on booking screens so it never covers buttons"
   await openBooking(page, "");
   await page.waitForSelector(".steps, .status");
   expect(await page.locator(".assist-launch").count() === 0, "launcher visible on booking page");
+  expect(await page.locator(".ribbon").count() === 0, "orange band covers the booking page buttons");
   await persona(page, "Kak Ani");
   expect(await page.locator(".assist-launch").count() === 0, "launcher visible in provider mode");
 });
@@ -422,7 +485,7 @@ await step("No horizontal scroll on phone", async () => {
   const wide = await page.evaluate(() => {
     if (document.documentElement.scrollWidth <= window.innerWidth + 1) return null;
     const W = window.innerWidth, out = [];
-    document.querySelectorAll("body *").forEach((el) => { const x = el.getBoundingClientRect(); if (x.right > W + 1 && !el.closest(".marquee")) out.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(x.right)}`); });
+    document.querySelectorAll("body *").forEach((el) => { const x = el.getBoundingClientRect(); if (x.right > W + 1 && !el.closest(".marquee") && !el.closest(".ribbon")) out.push(`${el.tagName}.${String(el.className).slice(0, 40)} right=${Math.round(x.right)}`); });
     return out.slice(0, 5).join("; ");
   });
   expect(!wide, `page scrolls sideways: ${wide}`);

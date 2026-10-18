@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 
 export type Route =
   | { name: "home" }
@@ -29,11 +30,25 @@ function emit() {
   if (typeof window !== "undefined") window.scrollTo({ top: 0 });
 }
 
+/** Search screens morph in (the search bar glides from the hero to the top) where the browser supports view transitions. */
+function smoothEmit(from: Route, to: Route) {
+  const doc = typeof document !== "undefined" ? (document as Document & { startViewTransition?: (cb: () => void) => unknown }) : null;
+  const wanted = to.name === "search" || from.name === "search";
+  const calm = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (!doc?.startViewTransition || !wanted || calm) return emit();
+  try {
+    doc.startViewTransition(() => flushSync(emit));
+  } catch {
+    emit();
+  }
+}
+
 export function navigate(r: Route, opts: { replace?: boolean; reset?: boolean } = {}) {
+  const from = stack[stack.length - 1];
   if (opts.reset) stack = [r];
   else if (opts.replace) stack = [...stack.slice(0, -1), r];
   else stack = [...stack, r].slice(-30);
-  emit();
+  smoothEmit(from, r);
 }
 
 export function back(fallback: Route = { name: "home" }) {

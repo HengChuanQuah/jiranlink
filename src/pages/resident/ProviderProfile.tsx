@@ -113,7 +113,7 @@ export function ProviderProfile({ id, q }: { id: string; q?: string }) {
         <div className="stack">
           <section className="card stack-sm">
             <h2 className="section-title" style={{ fontSize: 17 }}>Where</h2>
-            <MapView className="short" center={p.homeBased ? blurPoint(p.exact) : p.exact} zoom={15} home={me.home} googleKey={s.config.mapsKey}
+            <MapView className="short" center={p.homeBased ? blurPoint(p.exact) : p.exact} zoom={15} home={me.home} googleKey={s.config.mapsKey} mapId={s.config.mapId}
               pins={[{ id: p.id, point: p.homeBased ? blurPoint(p.exact) : p.exact, area: p.homeBased, label: p.displayName.slice(0, 2).toUpperCase(), hue: p.hue }]} />
             <p className="small muted">{p.homeBased ? "Home-based: only the general area is shown. The exact address is shared after you confirm a booking, if the job needs it." : "Shop or business location."} Serves up to {p.serviceRadiusKm} km away.</p>
           </section>

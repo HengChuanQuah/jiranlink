@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarCheck, Clock3, Mic, Search as SearchIcon, ShieldAlert, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Mic, Search as SearchIcon, ShieldAlert, Wallet } from "lucide-react";
 import { AerialCanvas } from "../../components/ui";
 import { ProviderCard } from "../../components/ProviderCard";
 import { TOWNSHIPS } from "../../data/geo";
+import { TOWNSHIP_CARD_PHOTOS, TOWNSHIP_PHOTOS } from "../../data/photos";
+import { useArcCarousel, useParallax } from "../../lib/motion";
 import { PERSONAS } from "../../data/seed";
 import { zonesFor } from "../../lib/geo";
 import { firstName, nameOf, useMe } from "../../lib/hooks";
@@ -55,6 +57,18 @@ export function HeroSearch({ initial = "", compact }: { initial?: string; compac
   );
 }
 
+/** A photo that fades in once loaded and quietly stays hidden if it can't load (the drawn pattern shows instead). */
+export function Photo({ src, tall, className }: { src: string; tall?: string; className?: string }) {
+  const [state, setState] = useState<"loading" | "ok" | "failed">("loading");
+  if (state === "failed") return null;
+  return (
+    <picture className={`photo ${className ?? ""}${state === "ok" ? " ok" : ""}`}>
+      {tall && <source media="(max-width: 699px)" srcSet={tall} />}
+      <img src={src} alt="" referrerPolicy="no-referrer" decoding="async" onLoad={() => setState("ok")} onError={() => setState("failed")} />
+    </picture>
+  );
+}
+
 function nearbyProviders(): SearchResult[] {
   const s = getState();
   const me = s.users.find((u) => u.id === s.currentUserId)!;
@@ -88,6 +102,13 @@ export function Home() {
   const owed = outstanding(s, me.id);
   const needsConfirm = s.bookings.filter((b) => b.residentId === me.id && (b.status === "accepted" || (b.status === "requested" && b.proposedStart)));
   const toReview = s.bookings.filter((b) => b.residentId === me.id && b.status === "completed" && b.payment !== "due");
+  const photo = township ? TOWNSHIP_PHOTOS[township.id] : undefined;
+  const heroBg = useRef<HTMLDivElement>(null);
+  const heroText = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  useParallax(heroBg, heroText);
+  useArcCarousel(strip, near.length);
+  const slide = (dir: number) => strip.current?.scrollBy({ left: dir * Math.max(260, strip.current.clientWidth * 0.8), behavior: "smooth" });
   const upcoming = s.bookings
     .filter((b) => b.residentId === me.id && b.status === "confirmed" && new Date(b.end) > new Date())
     .sort((a, b) => a.start.localeCompare(b.start))[0];
@@ -95,30 +116,25 @@ export function Home() {
   return (
     <>
       <section className="hero" aria-label="Search for services">
-        <AerialCanvas seed={township?.id === "elmina" ? 11 : township?.id === "kleast" ? 29 : 5} />
-        <div className="wrap hero-inner">
+        <div className="hero-bg" ref={heroBg}>
+          <AerialCanvas seed={township?.id === "elmina" ? 11 : township?.id === "kleast" ? 29 : 5} />
+          {photo && <Photo key={photo.wide} src={photo.wide} tall={photo.tall} className="hero-photo" />}
+        </div>
+        <div className="wrap hero-inner" ref={heroText}>
           <span className="hero-eyebrow">{zones.building?.name ?? zones.precinct?.name ?? "Your neighbourhood"} · {township?.name ?? "Sime Darby Property township"}</span>
           <h1>Help is a few doors away</h1>
           <p className="hero-sub">Selamat datang, {firstName(me.name)}. Book trusted services from verified neighbours, starting with your own {zones.building ? "building" : "taman"}. Describe the problem in any language.</p>
           <HeroSearch />
           <button className="hero-link" onClick={() => navigate({ name: "search" })}>Or browse all services <ArrowRight size={15} /></button>
         </div>
+        {photo && <span className="hero-credit">Photo: {township?.name}, {photo.credit}</span>}
+        <div className="hero-curve" aria-hidden />
       </section>
-      <div className="marquee" aria-hidden>
-        <div className="marquee-track">
-          {[0, 1].map((k) => (
-            <span key={k}>
-              <span>Verified neighbours</span><ArrowRight size={18} /><span>Your building first, then your taman</span><ArrowRight size={18} />
-              <span>Book a slot in seconds</span><ArrowRight size={18} /><span>Pay safely when the job is done</span><ArrowRight size={18} />
-            </span>
-          ))}
-        </div>
-      </div>
 
       <main className="page">
         <div className="wrap stack">
           {(me.verify !== "verified" || owed.length > 0 || needsConfirm.length > 0 || toReview.length > 0 || upcoming) && (
-            <div className="stack-sm">
+            <div className="stack-sm" data-reveal-stagger>
               {me.verify !== "verified" && (
                 <div className="notice n-warn"><ShieldAlert size={18} /><div className="grow"><b>Residency check in progress.</b> You can browse now. Booking unlocks once the township team approves your home.</div></div>
               )}
@@ -146,21 +162,25 @@ export function Home() {
           )}
 
           <section className="stack-sm" aria-labelledby="h-near">
-            <div className="section-head">
+            <div className="section-head" data-reveal>
               <div>
                 <h2 className="section-title" id="h-near">From your neighbours</h2>
                 <p className="section-sub">Closest first: {zones.building ? "your building, then " : ""}{zones.precinct?.name ?? "your area"}, then {zones.township?.name ?? "nearby"}.</p>
               </div>
+              <div className="arrow-pair">
+                <button className="arrow-btn" onClick={() => slide(-1)} aria-label="Previous neighbours"><ArrowLeft size={18} /></button>
+                <button className="arrow-btn" onClick={() => slide(1)} aria-label="More neighbours"><ArrowRight size={18} /></button>
+              </div>
             </div>
-            <div className="hscroll">
+            <div className="hscroll arc" ref={strip} data-reveal>
               {near.map((r) => <ProviderCard key={r.provider.id} r={r} onOpen={() => navigate({ name: "provider", id: r.provider.id })} />)}
             </div>
           </section>
 
           {promos.length > 0 && (
             <section className="stack-sm" aria-labelledby="h-promo">
-              <div className="section-head"><h2 className="section-title" id="h-promo">Around your township</h2></div>
-              <div className="grid-cards">
+              <div className="section-head" data-reveal><h2 className="section-title" id="h-promo">Around your township</h2></div>
+              <div className="grid-cards" data-reveal-stagger>
                 {promos.map((p) => (
                   <button key={p.id} className="card" style={{ textAlign: "left", border: 0, display: "grid", gap: 8, color: "var(--ink)" }}
                     onClick={() => run((st) => { const x = st.promotions.find((y) => y.id === p.id); if (x) x.clicks++; }, "Thanks! In the real app this opens the offer.")}>
@@ -178,19 +198,20 @@ export function Home() {
           )}
 
           <section className="stack-sm" aria-labelledby="h-towns">
-            <div className="section-head">
+            <div className="section-head" data-reveal>
               <div>
                 <h2 className="section-title" id="h-towns">Townships in this demo</h2>
                 <p className="section-sub">One growing township and one mature one, to show the same ranking works at both stages.</p>
               </div>
             </div>
-            <div className="township-cards">
+            <div className="township-cards" data-reveal-stagger>
               {TOWNSHIPS.map((t, i) => {
                 const persona = t.id === "elmina" ? PERSONAS[0] : t.id === "melawati" ? PERSONAS[1] : PERSONAS[2];
                 const count = s.providers.filter((p) => zonesFor(p.exact).township?.townshipId === t.id).length;
                 return (
                   <div key={t.id} className="tcard">
                     <AerialCanvas seed={[11, 5, 29][i]} dense={1.3} />
+                    {TOWNSHIP_CARD_PHOTOS[t.id] && <Photo src={TOWNSHIP_CARD_PHOTOS[t.id]} className="tcard-photo" />}
                     <div className="tcard-body">
                       <h3>{t.name}</h3>
                       <p className="small" style={{ opacity: 0.9 }}>{t.blurb} {count} sample providers.</p>

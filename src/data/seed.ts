@@ -28,6 +28,7 @@ export const DEFAULT_CONFIG: Config = {
   aiModel: (import.meta.env?.VITE_AI_MODEL as string) || "",
   aiKey: (import.meta.env?.VITE_AI_KEY as string) || "",
   mapsKey: (import.meta.env?.VITE_GOOGLE_MAPS_KEY as string) || "",
+  mapId: (import.meta.env?.VITE_GOOGLE_MAP_ID as string) || "",
 };
 
 // Small deterministic random generator so the seed is identical on every reset.

@@ -4,10 +4,14 @@ import { distanceLabel } from "../lib/geo";
 import { rm } from "../lib/time";
 import { Avatar, OnlineBadge, RatingLine, TrustBadges } from "./ui";
 
-export function ProviderCard({ r, onOpen, exception, selected }: { r: SearchResult; onOpen: () => void; exception?: boolean; selected?: boolean }) {
+export function ProviderCard({ r, onOpen, exception, selected, onHover, index }: {
+  r: SearchResult; onOpen: () => void; exception?: boolean; selected?: boolean; onHover?: (on: boolean) => void; index?: number;
+}) {
   const s = r.service;
   return (
-    <button className="pcard" onClick={onOpen} style={selected ? { borderColor: "var(--red)" } : undefined} aria-label={`${r.provider.displayName}, ${s.title}`}>
+    <button className={`pcard${selected ? " sel" : ""}`} onClick={onOpen} aria-label={`${r.provider.displayName}, ${s.title}`} data-pcard={r.provider.id}
+      onMouseEnter={onHover && (() => onHover(true))} onMouseLeave={onHover && (() => onHover(false))} onFocus={onHover && (() => onHover(true))} onBlur={onHover && (() => onHover(false))}
+      style={index !== undefined ? ({ "--i": index } as React.CSSProperties) : undefined}>
       {r.newcomerSlot && <span className="badge b-new slot-flag"><Sparkles size={12} /> Newcomer spotlight</span>}
       {exception && <span className="badge b-offer slot-flag"><TrendingUp size={12} /> Highly rated, a bit further</span>}
       <div className="pcard-top">

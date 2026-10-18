@@ -241,6 +241,7 @@ export interface Config {
   aiKey: string;
   aiProxyUrl: string; // JiranLink AI server (Cloudflare Worker) that holds the key
   mapsKey: string;
+  mapId: string; // Google Maps Map ID (needed for the custom price pins)
 }
 
 export interface InviteCode {

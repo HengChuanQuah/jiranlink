@@ -248,6 +248,7 @@ function SettingsTab() {
       <section className="card stack-sm">
         <h2 className="section-title" style={{ fontSize: 16 }}>Maps</h2>
         <div className="field"><label htmlFor="cfg-maps">Google Maps JavaScript API key</label><input id="cfg-maps" className="input" type="password" autoComplete="off" value={c.mapsKey} onChange={(e) => setC({ ...c, mapsKey: e.target.value })} /><span className="hint">Leave blank to use OpenStreetMap.</span></div>
+        <div className="field"><label htmlFor="cfg-mapid">Google Map ID</label><input id="cfg-mapid" className="input" autoComplete="off" value={c.mapId} onChange={(e) => setC({ ...c, mapId: e.target.value })} /><span className="hint">Needed for the price pins. Without it the map uses plain pins.</span></div>
       </section>
       <div className="btn-row">
         <button className="btn btn-primary" onClick={() => attempt((st) => updateConfig(st, c), "Settings saved")}>Save settings</button>

@@ -6,6 +6,8 @@ import { Avatar, Logo, Sheet, Toasts } from "./components/ui";
 import { PERSONAS } from "./data/seed";
 import { BUILD_LABEL, TestGuide } from "./components/TestGuide";
 import { Assistant } from "./components/Assistant";
+import { Ribbon } from "./components/Ribbon";
+import { useScrollReveal } from "./lib/motion";
 import { CrashGuard } from "./components/CrashGuard";
 import { run } from "./lib/store";
 import { back, navigate, useRoute, type Route } from "./lib/router";
@@ -189,8 +191,11 @@ export default function App() {
   const route = useRoute();
   const { s } = useMe();
   const overHero = route.name === "home" && s.mode === "resident";
+  // The moving orange band follows residents around, except on screens with their own bottom buttons.
+  const ribbon = s.mode === "resident" && !["book", "booking", "thread", "signup"].includes(route.name);
+  useScrollReveal();
   return (
-    <div className="app">
+    <div className={`app${ribbon ? " has-ribbon" : ""}`}>
       <Header overHero={overHero} />
       {overHero ? (
         <CrashGuard key="home" area="Home" onBack={() => navigate({ name: "home" }, { reset: true })}><Home /></CrashGuard>
@@ -208,6 +213,7 @@ export default function App() {
           <span>All people, businesses, reviews and promotions are sample data. {BUILD_LABEL}.</span>
         </div>
       </footer>
+      {ribbon && <Ribbon />}
       <BottomNav />
       <TestGuide />
       <CrashGuard area="Ask JiranLink" compact><Assistant /></CrashGuard>

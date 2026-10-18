@@ -19,6 +19,11 @@ function load(): AppState | null {
     }
     // The first test of v2 used a Cloudflare Worker that Gemini blocks from Malaysia; move to the current server.
     if (/workers\.dev/.test(parsed.config.aiProxyUrl) && DEFAULT_CONFIG.aiProxyUrl) parsed.config.aiProxyUrl = DEFAULT_CONFIG.aiProxyUrl;
+    // Saved before Google Maps was set up: pick up the public key and Map ID from this build.
+    if (parsed.config.mapId === undefined) {
+      parsed.config.mapId = DEFAULT_CONFIG.mapId;
+      if (!parsed.config.mapsKey) parsed.config.mapsKey = DEFAULT_CONFIG.mapsKey;
+    }
     return parsed;
   } catch {
     return null;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { Sheet } from "./ui";
 
-export const BUILD_LABEL = "Test build v2";
+export const BUILD_LABEL = "Test build v3";
 
 /** Floating "How to test" button with the demo script and codes, for team testing. */
 export function TestGuide() {

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Globe, Info, LayoutList, Map as MapIcon, Megaphone, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Globe, Info, LayoutList, Map as MapIcon, MapPin as PinIcon, Megaphone, Sparkles, X } from "lucide-react";
 import { HeroSearch } from "./Home";
 import { aiReady } from "../../ai/adapter";
 import { ProviderCard } from "../../components/ProviderCard";
 import { MapView, type MapPin } from "../../components/MapView";
-import { CatIcon, Empty, categoryName } from "../../components/ui";
+import { Avatar, CatIcon, Empty, RatingLine, categoryName } from "../../components/ui";
 import { CATEGORIES, GROUPS, categoryById, type CategoryGroup } from "../../data/categories";
 import { ZONES } from "../../data/geo";
 import { understand, understandFast, thresholdsFrom, categoriesInGroup, type AgentResult } from "../../ai/agent";
-import { blurPoint, zonesFor } from "../../lib/geo";
+import { blurPoint, distanceLabel, zonesFor } from "../../lib/geo";
+import { rm } from "../../lib/time";
 import { useMe } from "../../lib/hooks";
 import { navigate } from "../../lib/router";
 import { searchProviders, type SearchResult, type SortMode } from "../../lib/search";
@@ -24,8 +25,9 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
   const [picked, setPicked] = useState<string[] | null>(categoryIds ?? null);
   const [group, setGroup] = useState<CategoryGroup | null>(null);
   const [sort, setSort] = useState<SortMode>("nearest");
-  const [view, setView] = useState<"list" | "map">("list");
+  const [view, setView] = useState<"list" | "map">("map");
   const [selected, setSelected] = useState<string | null>(null);
+  const [hot, setHot] = useState<string | null>(null);
 
   // Ask the LLM only when keywords are not confident and a provider is configured.
   useEffect(() => {
@@ -61,14 +63,19 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
   const zones = zonesFor(me.home);
   const myTownship = zones.township?.townshipId;
   const mapZones = ZONES.filter((z) => z.townshipId === myTownship);
-  const pins: MapPin[] = useMemo(() => {
-    if (!out) return [];
-    const list = [...out.results, ...(out.exception ? [out.exception] : [])];
-    return list.map((r) => ({
-      id: r.provider.id, point: r.provider.homeBased ? blurPoint(r.provider.exact) : r.provider.exact, area: r.provider.homeBased,
-      label: initialsOf(r.provider.displayName), hue: r.provider.hue, selected: r.provider.id === selected,
-    }));
-  }, [out, selected]);
+  const mapped = useMemo(() => (out ? [...out.results, ...(out.exception ? [out.exception] : [])] : []), [out]);
+  const pins: MapPin[] = useMemo(() => mapped.map((r) => ({
+    id: r.provider.id, point: r.provider.homeBased ? blurPoint(r.provider.exact) : r.provider.exact, area: r.provider.homeBased,
+    label: initialsOf(r.provider.displayName), price: rm(r.service.priceMin), hue: r.provider.hue,
+  })), [mapped]);
+  const selectedResult = mapped.find((r) => r.provider.id === selected) ?? null;
+  const pickOnMap = (id: string) => {
+    setSelected(id);
+    // Bring the matching card into view on wide screens, where the list sits beside the map.
+    if (window.matchMedia("(min-width: 980px)").matches) {
+      document.querySelector(`[data-pcard="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
 
   const open = (r: SearchResult) => navigate({ name: "provider", id: r.provider.id, q });
   const licensed = activeCats.some((c) => categoryById(c)?.licensed);
@@ -193,15 +200,15 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
               <button aria-pressed={sort === "top"} onClick={() => setSort("top")}>Top rated</button>
             </div>
             <div className="seg" role="group" aria-label="View">
-              <button aria-pressed={view === "list"} onClick={() => setView("list")}><LayoutList size={15} /> List</button>
               <button aria-pressed={view === "map"} onClick={() => setView("map")}><MapIcon size={15} /> Map</button>
+              <button aria-pressed={view === "list"} onClick={() => setView("list")}><LayoutList size={15} /> List only</button>
             </div>
           </div>
 
           {agent?.hints.online && out.online.length > 0 && <OnlineList list={out.online} open={open} />}
 
           <div className={`results-layout${view === "map" ? " with-map" : ""}`}>
-            <div className="stack-sm">
+            <div className="stack-sm results-list">
               {out.results.length === 0 && (
                 <div className="card-flat">
                   <Empty icon={<Megaphone size={24} />} title="Nobody nearby offers this yet">
@@ -210,23 +217,53 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
                   </Empty>
                 </div>
               )}
-              {out.results.map((r) => (
-                <ProviderCard key={r.provider.id} r={r} onOpen={() => open(r)} selected={selected === r.provider.id} />
+              {out.results.map((r, i) => (
+                <ProviderCard key={r.provider.id} r={r} onOpen={() => open(r)} selected={selected === r.provider.id} index={i}
+                  onHover={(on) => setHot(on ? r.provider.id : null)} />
               ))}
-              {out.exception && <ProviderCard r={out.exception} onOpen={() => open(out.exception!)} exception />}
+              {out.exception && <ProviderCard r={out.exception} onOpen={() => open(out.exception!)} exception index={out.results.length}
+                selected={selected === out.exception.provider.id} onHover={(on) => setHot(on ? out.exception!.provider.id : null)} />}
               {out.results.length > 0 && (
                 <button className="link-btn" onClick={() => navigate({ name: "requests" })}><Megaphone size={15} /> None of these fit? Post a request</button>
               )}
             </div>
             {view === "map" && (
-              <MapView center={me.home} zoom={out.reachedRing >= 4 ? 13 : 15} home={me.home} zones={mapZones} pins={pins} googleKey={s.config.mapsKey}
-                onSelect={(id) => { setSelected(id); document.querySelector(`[aria-label^="${s.providers.find((p) => p.id === id)?.displayName}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }} />
+              <MapView className="big" center={me.home} zoom={out.reachedRing >= 4 ? 13 : 15} home={me.home} zones={mapZones} pins={pins}
+                rings={s.config.ringsKm} selectedId={selected} hotId={hot} onSelect={pickOnMap} googleKey={s.config.mapsKey} mapId={s.config.mapId}>
+                {selectedResult && <MapCard r={selectedResult} q={q} onClose={() => setSelected(null)} />}
+              </MapView>
             )}
           </div>
 
           {!agent?.hints.online && out.online.length > 0 && <OnlineList list={out.online} open={open} />}
         </section>
       )}
+    </div>
+  );
+}
+
+/** The card that pops up over the map when a pin is tapped, like a place card in Google Maps. */
+function MapCard({ r, q, onClose }: { r: SearchResult; q?: string; onClose: () => void }) {
+  const sv = r.service;
+  return (
+    <div className="map-card" role="dialog" aria-label={`${r.provider.displayName} on the map`}>
+      <button className="x-btn map-card-x" onClick={onClose} aria-label="Close"><X size={16} /></button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+        <Avatar name={r.provider.displayName} hue={r.provider.hue} />
+        <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+          <div className="strong ellipsis">{r.provider.displayName}</div>
+          <div className="small muted ellipsis">{sv.title}</div>
+        </div>
+      </div>
+      <div className="small" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <RatingLine stats={r.stats} />
+        <span><PinIcon size={12} /> {r.ringLabel} · {distanceLabel(r.distanceM)}</span>
+        <b className="tnum">{rm(sv.priceMin)}{sv.priceMax > sv.priceMin ? ` to ${rm(sv.priceMax)}` : ""}</b>
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-primary btn-sm" onClick={() => navigate({ name: "book", serviceId: sv.id, q })}>Book a slot</button>
+        <button className="btn btn-outline btn-sm" onClick={() => navigate({ name: "provider", id: r.provider.id, q })}>View profile <ArrowRight size={14} /></button>
+      </div>
     </div>
   );
 }

@@ -32,7 +32,8 @@ Optional keys go in `.env` (copy `.env.example`). They can also be typed into Ad
 
 | Variable | What it does |
 | --- | --- |
-| `VITE_GOOGLE_MAPS_KEY` | Uses Google Maps. Without it, the app uses OpenStreetMap, and falls back to township outlines if tiles can't load. |
+| `VITE_GOOGLE_MAPS_KEY` | Uses Google Maps. Without it, the app uses OpenStreetMap, and falls back to township outlines if tiles can't load. The public build's key is in `.env.pages`; it is restricted to hengchuanquah.github.io and the Maps JavaScript API. Each browser is capped at 60 Google map loads a day, then gets OpenStreetMap. |
+| `VITE_GOOGLE_MAP_ID` | Google Map ID (JavaScript, Vector). Needed for the price pins. |
 | `VITE_AI_PROVIDER` | `gemini` (default choice) or `claude`. Leave unset for keywords only. |
 | `VITE_AI_MODEL` | Defaults to `gemini-2.5-flash` or `claude-haiku-5-5`. |
 | `VITE_AI_KEY` | API key for that provider. |

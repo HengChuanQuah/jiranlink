@@ -29,19 +29,9 @@ export function Assistant() {
   const [history, setHistory] = useState<GeminiContent[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [slow, setSlow] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
-  // After 8 seconds, say why it's taking a while (the answer itself is cut off at 15 seconds).
-  useEffect(() => {
-    if (!busy) {
-      setSlow(false);
-      return;
-    }
-    const t = setTimeout(() => setSlow(true), 8000);
-    return () => clearTimeout(t);
-  }, [busy]);
   // Braces matter: newer Chrome returns a value from scrollIntoView, and React would try to run it as clean-up.
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -111,8 +101,8 @@ export function Assistant() {
                 : it.who === "error" ? <div key={it.id} className="bubble sys">{it.text}</div>
                   : <ReplyView key={it.id} r={it.reply} go={go} />,
             )}
-            {busy && !slow && <div className="bubble them assist-typing" aria-label="Thinking"><span /><span /><span /></div>}
-            {busy && slow && <div className="bubble them small" role="status">Still working, the AI is busy right now…</div>}
+            {/* Typing dots like a chat app, for as long as the answer takes (cut off at 15 seconds). */}
+            {busy && <div className="assist-typing" role="status" aria-label="Ask JiranLink is typing"><span /><span /><span /></div>}
             <div ref={end} />
           </div>
 
