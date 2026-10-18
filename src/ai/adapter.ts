@@ -129,9 +129,9 @@ export interface GeminiContent {
 }
 
 /** One model turn of the assistant. The caller runs any tools the model asks for and calls again. */
-export async function agentTurn(contents: GeminiContent[], s: LlmSettings): Promise<GeminiContent> {
+export async function agentTurn(contents: GeminiContent[], s: LlmSettings, timeoutMs = 25000): Promise<GeminiContent> {
   if (s.provider === "proxy") {
-    const data = await postJson(`${proxyBase(s)}/agent`, { contents }, 25000);
+    const data = await postJson(`${proxyBase(s)}/agent`, { contents }, timeoutMs);
     if (!data?.content) throw new Error("The AI server sent an empty answer.");
     return data.content as GeminiContent;
   }
@@ -140,7 +140,7 @@ export async function agentTurn(contents: GeminiContent[], s: LlmSettings): Prom
       systemInstruction: { parts: [{ text: AGENT_PROMPT }] },
       tools: [{ functionDeclarations: AGENT_TOOLS }],
       contents,
-    }, 25000);
+    }, timeoutMs);
     const content = data?.candidates?.[0]?.content;
     if (!content) throw new Error("The AI sent an empty answer.");
     return { role: "model", parts: content.parts ?? [] };

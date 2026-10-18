@@ -50,6 +50,11 @@ async function mockAiServer(ctx) {
 async function newPage(width, height, scheme = "light") {
   const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: scheme });
   await mockAiServer(ctx);
+  // Behave like Chrome 155+: scrollIntoView returns a Promise. This is what crashed teammates' pages.
+  await ctx.addInitScript(() => {
+    const o = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (...a) { o.apply(this, a); return Promise.resolve(); };
+  });
   const page = await ctx.newPage();
   page.on("console", (m) => { if (m.type() === "error" && !/tile|openstreetmap|ERR_|Failed to load resource/i.test(m.text())) errors.push(`[console] ${m.text()}`); });
   page.on("pageerror", (e) => errors.push(`[pageerror] ${e.message}`));
@@ -109,7 +114,11 @@ await step("Home has no Search tab and no example chips", async () => {
 
 await step("Home renders hero and categories", async () => {
   expect(await page.locator(".hero").isVisible(), "hero missing");
-  expect((await page.locator(".cat-tile").count()) > 5, "category tiles missing");
+  expect((await page.locator(".cat-tile").count()) === 0, "services grid should be gone from Home");
+  expect(await page.locator(".hero-link", { hasText: "Browse all services" }).count() === 1, "browse-all link missing");
+  await page.locator(".hero-link").click();
+  expect((await page.locator(".cat-tile").count()) > 10, "all-services page empty");
+  await nav(page, "Home");
   await shot(page, "01-home-phone");
 });
 
@@ -368,6 +377,16 @@ await step("Ask JiranLink: hidden on booking screens so it never covers buttons"
   expect(await page.locator(".assist-launch").count() === 0, "launcher visible on booking page");
   await persona(page, "Kak Ani");
   expect(await page.locator(".assist-launch").count() === 0, "launcher visible in provider mode");
+});
+
+await step("Chrome 155: leaving a booking for Messages doesn't blank the page", async () => {
+  await persona(page, "Aisyah");
+  await openBooking(page, "");
+  await page.waitForTimeout(300);
+  await nav(page, "Messages");
+  await page.waitForTimeout(300);
+  expect(await page.locator(".app .header").count() === 1, "page went blank");
+  expect(await page.locator(".crash").count() === 0, "crash guard showed");
 });
 
 // ---------- Desktop and dark mode screenshots of every main screen ----------

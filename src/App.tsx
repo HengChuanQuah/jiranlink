@@ -6,8 +6,9 @@ import { Avatar, Logo, Sheet, Toasts } from "./components/ui";
 import { PERSONAS } from "./data/seed";
 import { BUILD_LABEL, TestGuide } from "./components/TestGuide";
 import { Assistant } from "./components/Assistant";
+import { CrashGuard } from "./components/CrashGuard";
 import { run } from "./lib/store";
-import { navigate, useRoute, type Route } from "./lib/router";
+import { back, navigate, useRoute, type Route } from "./lib/router";
 import { firstName, unreadForUser, useMe } from "./lib/hooks";
 import { Home } from "./pages/resident/Home";
 import { Search } from "./pages/resident/Search";
@@ -191,9 +192,14 @@ export default function App() {
   return (
     <div className="app">
       <Header overHero={overHero} />
-      {overHero ? <Home /> : (
+      {overHero ? (
+        <CrashGuard key="home" area="Home" onBack={() => navigate({ name: "home" }, { reset: true })}><Home /></CrashGuard>
+      ) : (
         <main className="page">
-          <div className="wrap"><Page route={route} /></div>
+          <div className="wrap">
+            {/* key: a new screen starts with a fresh guard */}
+            <CrashGuard key={JSON.stringify(route)} area={route.name} onBack={() => back({ name: "home" })}><Page route={route} /></CrashGuard>
+          </div>
         </main>
       )}
       <footer className="footer">
@@ -204,7 +210,7 @@ export default function App() {
       </footer>
       <BottomNav />
       <TestGuide />
-      <Assistant />
+      <CrashGuard area="Ask JiranLink" compact><Assistant /></CrashGuard>
       <Toasts />
     </div>
   );

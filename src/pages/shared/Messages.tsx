@@ -12,7 +12,10 @@ export function ChatThread({ threadId }: { threadId: string }) {
   const [text, setText] = useState("");
   const msgs = s.messages.filter((m) => m.threadId === threadId);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "nearest" }), [msgs.length]);
+  // Braces matter: newer Chrome returns a value from scrollIntoView, and React would try to run it as clean-up.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "nearest" });
+  }, [msgs.length]);
   const send = () => {
     if (attempt((st) => sendMessage(st, threadId, me.id, text))) setText("");
   };

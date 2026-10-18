@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSeed } from "../src/data/seed";
 import { askAssistant, quickAnswer, toolFindProviders, toolGetHelp, toolMyBookings, guardText } from "../src/ai/assistant";
 import type { LlmSettings } from "../src/ai/adapter";
@@ -194,8 +194,8 @@ describe("AI server on Vercel (api/*.js)", () => {
 
 describe("AI server handles a busy model", () => {
   it("retries once, then falls back to the lighter model", async () => {
-    // @ts-expect-error plain JS module
-    const { handle } = await import("../api/_core.js");
+    // Clean server instance (the Cloudflare build), so earlier tests' busy marks don't interfere.
+    const handle = (r: Request, env: object) => worker.fetch(r, env);
     const busy = () => new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 });
     const good = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }), { status: 200 });
     const f = vi.fn().mockImplementationOnce(async () => busy()).mockImplementationOnce(async () => busy()).mockImplementation(async () => good());
@@ -205,5 +205,78 @@ describe("AI server handles a busy model", () => {
     expect(res.status).toBe(200);
     expect(f).toHaveBeenCalledTimes(3);
     expect(body.model).toContain("flash-lite");
+  });
+});
+
+describe("Chrome 155 crash guard (regression)", () => {
+  it("no effect returns a value (React would call it as clean-up)", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const files: string[] = [];
+    const walk = (d: string) => readdirSync(d).forEach((f) => { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) && files.push(p); });
+    walk("src");
+    const bad = files.flatMap((f) => readFileSync(f, "utf8").split("\n").map((l, i) => ({ f, i, l })).filter(({ l }) => /use(Layout)?Effect\(\(\) =>\s*[^{\s]/.test(l)));
+    expect(bad.map(({ f, i }) => `${f}:${i + 1}`)).toEqual([]);
+  });
+});
+
+describe("AI server speed rules", () => {
+  // Earlier tests leave models marked busy for 5 minutes; start each of these 10 minutes later.
+  let clock = Date.now();
+  beforeEach(() => {
+    clock += 10 * 60 * 1000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(clock);
+  });
+  afterEach(() => vi.useRealTimers());
+  const ok = (text = "{}") => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 });
+  const req = (path: string, body: unknown, ip: string) =>
+    new Request(`https://w.test${path}`, { method: "POST", headers: { Origin: "https://hengchuanquah.github.io", "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify(body) });
+
+  it("the assistant asks flash-lite first", async () => {
+    const f = vi.fn(async () => ok("hi"));
+    vi.stubGlobal("fetch", f);
+    await worker.fetch(req("/agent", { contents: [{ role: "user", parts: [{ text: "hello" }] }] }, "5.5.5.1"), { GEMINI_API_KEY: "k" });
+    expect(String((f.mock.calls[0] as unknown[])[0])).toContain("flash-lite");
+  });
+  it("search asks 3.8 Flash with low thinking, and retries without it if rejected", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Unknown field thinkingConfig.thinkingLevel" } }), { status: 400 }))
+      .mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", f);
+    const res = await worker.fetch(req("/classify", { text: "paip" }, "5.5.5.2"), { GEMINI_API_KEY: "k" });
+    expect(res.status).toBe(200);
+    const first = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    const second = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body));
+    expect(String(f.mock.calls[0][0])).toContain("gemini-3.8-flash");
+    expect(first.generationConfig.thinkingConfig.thinkingLevel).toBe("low");
+    expect(second.generationConfig.thinkingConfig).toBeUndefined();
+  });
+  it("remembers a busy model and skips it next time", async () => {
+    // Clean server instance (the Cloudflare build), so earlier tests' busy marks don't interfere.
+    const handle = (r: Request, env: object) => worker.fetch(r, env);
+    const busy = () => new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 });
+    const f1 = vi.fn().mockImplementationOnce(async () => busy()).mockImplementationOnce(async () => busy()).mockImplementation(async () => ok());
+    vi.stubGlobal("fetch", f1);
+    await handle(req("/classify", { text: "paip" }, "6.6.6.1"), { GEMINI_API_KEY: "k" });
+    const f2 = vi.fn(async () => ok());
+    vi.stubGlobal("fetch", f2);
+    await handle(req("/classify", { text: "paip" }, "6.6.6.2"), { GEMINI_API_KEY: "k" });
+    expect(f2).toHaveBeenCalledTimes(1);
+    expect(String((f2.mock.calls[0] as unknown[])[0])).toContain("flash-lite");
+  });
+});
+
+describe("assistant answer time limit", () => {
+  it("shows the quick answer when the AI is slower than the limit", async () => {
+    vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise((_res, rej) => {
+      init.signal?.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    })));
+    const t0 = Date.now();
+    const r = await askAssistant("sinki tersumbat", [], ctxFor("u-aisyah"), proxy, 600);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(r.mode).toBe("quick");
+    expect(r.note).toMatch(/longer than/);
+    expect(r.providers?.categoryId).toBe("plumbing");
   });
 });

@@ -46,7 +46,9 @@ function pinHtml(p: MapPin) {
 
 export function MapView(props: Props) {
   const [useGoogle, setUseGoogle] = useState(!!props.googleKey);
-  useEffect(() => setUseGoogle(!!props.googleKey), [props.googleKey]);
+  useEffect(() => {
+    setUseGoogle(!!props.googleKey);
+  }, [props.googleKey]);
   return useGoogle ? <GoogleMapView {...props} onFail={() => setUseGoogle(false)} /> : <LeafletMapView {...props} />;
 }
 

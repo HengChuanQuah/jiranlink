@@ -132,13 +132,22 @@ export function guardText(text: string, ctx: Ctx, allowedIds: Set<string>): stri
 
 // ---------- The loop ----------
 
+class TimeoutError extends Error {
+  constructor() {
+    super("The AI took too long to answer.");
+  }
+}
+
 function contextLine(ctx: Ctx) {
   const z = zonesFor(ctx.me.home);
   const area = [z.building?.name, z.precinct?.name, z.township?.name].filter(Boolean).join(", ");
   return `[Context] Resident first name: ${ctx.me.name.split(" ")[0]}. Home area: ${area || ctx.me.homeLabel}.`;
 }
 
-export async function askAssistant(question: string, history: GeminiContent[], ctx: Ctx, settings?: LlmSettings): Promise<AssistantReply> {
+/** The whole answer, all AI calls included, must arrive within this; otherwise the quick answer is shown. */
+export const ANSWER_LIMIT_MS = 15000;
+
+export async function askAssistant(question: string, history: GeminiContent[], ctx: Ctx, settings?: LlmSettings, limitMs = ANSWER_LIMIT_MS): Promise<AssistantReply> {
   const s = settings ?? settingsFrom(ctx.s.config);
   if (!assistantReady(ctx.s.config) && !settings) return quickAnswer(question, ctx);
 
@@ -146,10 +155,15 @@ export async function askAssistant(question: string, history: GeminiContent[], c
   const contents: GeminiContent[] = [...history.slice(-6), userTurn];
   const reply: AssistantReply = { text: "", toolCalls: [], mode: "ai", history: [] };
   const allowed = new Set<string>();
+  const deadline = Date.now() + limitMs;
 
   try {
     for (let round = 0; round < 4; round++) {
-      const model = await agentTurn(contents, s);
+      const left = deadline - Date.now();
+      if (left < 500) throw new TimeoutError();
+      const model = await agentTurn(contents, s, left).catch((e: Error) => {
+        throw /too long/i.test(e.message) ? new TimeoutError() : e;
+      });
       const calls = model.parts.filter((p) => p.functionCall);
       if (!calls.length) {
         reply.text = model.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
@@ -190,7 +204,9 @@ export async function askAssistant(question: string, history: GeminiContent[], c
     }
   } catch (e) {
     const quick = quickAnswer(question, ctx);
-    quick.note = `The AI is unavailable right now (${(e as Error).message}), so this is a quick keyword answer.`;
+    quick.note = e instanceof TimeoutError
+      ? `The AI took longer than ${Math.round(limitMs / 1000)} seconds, so this is a quick keyword answer.`
+      : `The AI is unavailable right now (${(e as Error).message}), so this is a quick keyword answer.`;
     return quick;
   }
 

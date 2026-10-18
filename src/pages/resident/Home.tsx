@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarCheck, Clock3, Megaphone, Mic, Search as SearchIcon, ShieldAlert, Wallet } from "lucide-react";
-import { AerialCanvas, CatIcon, categoryName } from "../../components/ui";
+import { ArrowRight, CalendarCheck, Clock3, Mic, Search as SearchIcon, ShieldAlert, Wallet } from "lucide-react";
+import { AerialCanvas } from "../../components/ui";
 import { ProviderCard } from "../../components/ProviderCard";
-import { CATEGORIES } from "../../data/categories";
 import { TOWNSHIPS } from "../../data/geo";
 import { PERSONAS } from "../../data/seed";
 import { zonesFor } from "../../lib/geo";
 import { firstName, nameOf, useMe } from "../../lib/hooks";
 import { navigate } from "../../lib/router";
-import { searchProviders, ringFor, ringLabel, type SearchResult } from "../../lib/search";
+import { ringFor, ringLabel, type SearchResult } from "../../lib/search";
 import { ratingStats } from "../../lib/rating";
 import { getState, run } from "../../lib/store";
-import { fmtSlot, rm, timeAgo } from "../../lib/time";
+import { fmtSlot, rm } from "../../lib/time";
 import { outstanding } from "../../lib/domain";
 
 
@@ -79,12 +78,6 @@ export function Home() {
   const zones = zonesFor(me.home);
   const township = TOWNSHIPS.find((t) => t.id === zones.township?.townshipId);
   const near = useMemo(nearbyProviders, [s.currentUserId, s.providers.length, s.reviews.length]);
-  const catCounts = useMemo(() => {
-    return CATEGORIES.map((c) => {
-      const r = searchProviders(s, { resident: me, categoryIds: [c.id] });
-      return { c, n: r.results.length + r.online.length };
-    }).sort((a, b) => b.n - a.n);
-  }, [s.currentUserId, s.providers.length, s.services.length]);
   const promos = s.promotions.filter((p) => p.active && p.townshipId === township?.id);
   const promoIds = promos.map((p) => p.id).join(",");
   useEffect(() => {
@@ -98,7 +91,6 @@ export function Home() {
   const upcoming = s.bookings
     .filter((b) => b.residentId === me.id && b.status === "confirmed" && new Date(b.end) > new Date())
     .sort((a, b) => a.start.localeCompare(b.start))[0];
-  const asks = s.requests.filter((r) => r.status === "open" && zonesFor(s.users.find((u) => u.id === r.residentId)?.home ?? [0, 0]).township?.townshipId === township?.id).slice(0, 3);
 
   return (
     <>
@@ -109,6 +101,7 @@ export function Home() {
           <h1>Help is a few doors away</h1>
           <p className="hero-sub">Selamat datang, {firstName(me.name)}. Book trusted services from verified neighbours, starting with your own {zones.building ? "building" : "taman"}. Describe the problem in any language.</p>
           <HeroSearch />
+          <button className="hero-link" onClick={() => navigate({ name: "search" })}>Or browse all services <ArrowRight size={15} /></button>
         </div>
       </section>
       <div className="marquee" aria-hidden>
@@ -152,25 +145,6 @@ export function Home() {
             </div>
           )}
 
-          <section className="stack-sm" aria-labelledby="h-cats">
-            <div className="section-head">
-              <div>
-                <h2 className="section-title" id="h-cats">Services near you</h2>
-                <p className="section-sub">Counts show providers you can book from {zones.building?.name ?? zones.precinct?.name ?? "home"}, plus online services.</p>
-              </div>
-              <button className="link-btn" onClick={() => navigate({ name: "search" })}>All services <ArrowRight size={16} /></button>
-            </div>
-            <div className="cat-grid">
-              {catCounts.slice(0, 12).map(({ c, n }) => (
-                <button key={c.id} className="cat-tile" onClick={() => navigate({ name: "search", categoryIds: [c.id] })}>
-                  <span className="cat-icon"><CatIcon id={c.id} /></span>
-                  <span>{c.name}</span>
-                  <span className="tiny muted tnum" style={{ fontWeight: 600 }}>{n ? `${n} available` : "Post a request"}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
           <section className="stack-sm" aria-labelledby="h-near">
             <div className="section-head">
               <div>
@@ -202,29 +176,6 @@ export function Home() {
               <p className="hint">Sponsored items sit in their own space and never change the order of search results.</p>
             </section>
           )}
-
-          <section className="stack-sm" aria-labelledby="h-asks">
-            <div className="section-head">
-              <div>
-                <h2 className="section-title" id="h-asks">Neighbours are asking</h2>
-                <p className="section-sub">Can't find someone? Post what you need and providers nearby reply.</p>
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={() => navigate({ name: "requests" })}><Megaphone size={16} /> Post a request</button>
-            </div>
-            <div className="grid-cards">
-              {asks.length === 0 && <p className="muted small">No open requests in your township right now.</p>}
-              {asks.map((r) => (
-                <button key={r.id} className="card-flat" style={{ textAlign: "left", display: "grid", gap: 8, color: "var(--ink)" }} onClick={() => navigate({ name: "requests" })}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    {r.categoryId && <span className="badge b-ring">{categoryName(r.categoryId)}</span>}
-                    <span className="tiny muted">{timeAgo(r.createdAt)}</span>
-                  </div>
-                  <p style={{ fontSize: 14.5 }}>{r.text}</p>
-                  <span className="tiny muted">{r.responses.length} {r.responses.length === 1 ? "reply" : "replies"}</span>
-                </button>
-              ))}
-            </div>
-          </section>
 
           <section className="stack-sm" aria-labelledby="h-towns">
             <div className="section-head">

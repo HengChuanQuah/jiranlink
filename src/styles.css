@@ -462,3 +462,10 @@ button.assist-row:hover { border-color: var(--red); }
 
 /* Grid children never grow wider than their column because of long unbroken text. */
 .stack > *, .stack-sm > *, .wrap > * { min-width: 0; }
+
+/* Crash guard */
+.crash { display: flex; gap: 12px; align-items: flex-start; padding: 18px; border-radius: var(--r-card); background: var(--bad-bg); color: var(--ink); border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); margin-block: 24px; }
+.crash > svg { color: var(--bad); flex: none; margin-top: 2px; }
+.crash-compact { position: fixed; z-index: 160; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: min(380px, calc(100vw - 32px)); margin: 0; box-shadow: var(--shadow-lift); }
+.hero-link { justify-self: start; display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 2px; color: #fff; font-weight: 700; font-size: 14px; opacity: 0.9; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,0.4); }
+.hero-link:hover { opacity: 1; text-decoration-color: #fff; }

@@ -91,17 +91,35 @@ function cleanContents(contents) {
   });
 }
 
-async function gemini(env, body) {
-  const models = [env.GEMINI_MODEL || DEFAULT_MODEL];
-  if (!env.GEMINI_MODEL || env.GEMINI_MODEL !== FALLBACK_MODEL) models.push(FALLBACK_MODEL);
+// Models that were busy recently are skipped for a while, so every call doesn't fail on them first.
+// Each server instance keeps its own memory; that's good enough to cut most wasted attempts.
+const BUSY_MS = 5 * 60 * 1000;
+const busyUntil = {};
+// Lowest documented "thinking" level per model (Gemini docs); flash-lite already defaults to its lowest.
+const THINKING = { "gemini-3.8-flash": "low" };
+
+function withThinking(body, model) {
+  const level = THINKING[model];
+  if (!level) return body;
+  return { ...body, generationConfig: { ...(body.generationConfig || {}), thinkingConfig: { thinkingLevel: level } } };
+}
+
+/** prefer: "lite" puts the lighter, faster model first (used by the assistant). */
+async function gemini(env, body, prefer) {
+  let models = env.GEMINI_MODEL ? [env.GEMINI_MODEL] : prefer === "lite" ? [FALLBACK_MODEL, DEFAULT_MODEL] : [DEFAULT_MODEL, FALLBACK_MODEL];
+  if (env.GEMINI_MODEL && env.GEMINI_MODEL !== FALLBACK_MODEL) models.push(FALLBACK_MODEL);
+  const now = Date.now();
+  const fresh = models.filter((m) => !(busyUntil[m] > now));
+  if (fresh.length) models = [...fresh, ...models.filter((m) => !fresh.includes(m))].slice(0, models.length);
   let last = "", lastStatus = 502;
   for (const model of models) {
+    let thinking = true;
     // Busy (500/503): wait briefly and retry once. Busy again, out of quota (429) or unavailable: next model.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-        body: JSON.stringify(body),
+        body: JSON.stringify(thinking ? withThinking(body, model) : body),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -111,8 +129,11 @@ async function gemini(env, body) {
       }
       last = "Gemini error " + res.status + ": " + (data?.error?.message || "").slice(0, 200);
       lastStatus = res.status === 429 ? 429 : res.status === 503 || res.status === 500 ? 503 : 502;
+      // If this model rejects the thinking setting, try once more without it.
+      if (res.status === 400 && thinking && THINKING[model] && /thinking/i.test(last)) { thinking = false; continue; }
       const busy = res.status === 500 || res.status === 503;
       if (busy && attempt === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
+      if (busy || res.status === 429) busyUntil[model] = Date.now() + BUSY_MS;
       const tryNext = busy || res.status === 429 || res.status === 404 || res.status === 403 || (res.status === 400 && /model/i.test(last));
       if (tryNext) break;
       throw Object.assign(new Error(last), { status: lastStatus });
@@ -169,7 +190,7 @@ async function handle(request, env) {
           systemInstruction: { parts: [{ text: AGENT_PROMPT }] },
           tools: [{ functionDeclarations: AGENT_TOOLS }],
           contents: cleanContents(body.contents),
-        });
+        }, "lite");
         return json({ content: r.content, model: r.model }, 200, headers);
       }
 
