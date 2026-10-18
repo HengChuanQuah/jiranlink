@@ -6,6 +6,8 @@ npm run build:pages
 REMOTE="$(git remote get-url origin)"
 TMP="$(mktemp -d)"
 cp -r dist-pages/. "$TMP"
+# gh-pages holds only the built site. Tell Vercel not to try building it (that failed with "vite: command not found").
+printf '{ "git": { "deploymentEnabled": false } }\n' > "$TMP/vercel.json"
 cd "$TMP"
 git init -q -b gh-pages
 git add -A
