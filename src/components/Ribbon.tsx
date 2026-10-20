@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "./ui";
 
-const LINES = ["Verified neighbours", "Your building first, then your taman", "Book a slot in seconds", "Pay safely when the job is done"];
+const LINES = ["Trusted. Verified. Next door.", "Real neighbours. Real reviews.", "No cash upfront. Pay when it’s done."];
 const BASE_SPEED = 52; // pixels per second when the page is still
 const CALM_SPEED = 24; // for people who turned animations down: slower, no scroll boost
 
