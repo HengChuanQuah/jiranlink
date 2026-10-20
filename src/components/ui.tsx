@@ -82,17 +82,6 @@ export function RatingLine({ stats }: { stats: RatingStats }) {
   );
 }
 
-/** Verified mark: solid green circle with a white tick, drawn in code so it stays sharp at any size. */
-export function VerifiedTick({ size = 16 }: { size?: number }) {
-  return (
-    <svg className="verified-tick" width={size} height={size} viewBox="0 0 24 24" role="img" aria-label="Verified resident">
-      <title>Verified resident</title>
-      <circle cx="12" cy="12" r="12" fill="currentColor" />
-      <path d="M6.2 12.4l3.9 3.9 7.7-7.9" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter" />
-    </svg>
-  );
-}
-
 export function TrustBadges({ provider, stats, compact }: { provider: Provider; stats: RatingStats; compact?: boolean }) {
   return (
     <div className="badges">

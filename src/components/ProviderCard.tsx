@@ -1,8 +1,8 @@
-import { MapPin, Star } from "lucide-react";
+import { BadgeCheck, MapPin, Star } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { distanceLabel } from "../lib/geo";
 import { rm } from "../lib/time";
-import { Avatar, OnlineBadge, RatingLine, TrustBadges, VerifiedTick } from "./ui";
+import { Avatar, OnlineBadge, RatingLine, TrustBadges } from "./ui";
 
 export function ProviderCard({ r, onOpen, exception, selected, onHover, index }: {
   r: SearchResult; onOpen: () => void; exception?: boolean; selected?: boolean; onHover?: (on: boolean) => void; index?: number;
@@ -17,7 +17,7 @@ export function ProviderCard({ r, onOpen, exception, selected, onHover, index }:
       <div className="pcard-top">
         <Avatar name={r.provider.displayName} hue={r.provider.hue} />
         <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
-          <div className="pcard-name">{r.provider.displayName} <VerifiedTick /></div>
+          <div className="pcard-name">{r.provider.displayName} <BadgeCheck size={15} className="name-tick" aria-label="Verified resident" /></div>
           <div className="pcard-svc">{s.title}</div>
         </div>
       </div>
