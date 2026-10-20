@@ -586,3 +586,6 @@ button.assist-row:hover { border-color: var(--red); }
 .b-offer { background: #c2410c; color: #fff; }
 .pcard .slot-flag { font-size: 12px; padding: 4px 10px; }
 .name-tick { color: var(--ok); vertical-align: -2px; margin-left: 2px; }
+.verified-tick { color: #12802f; vertical-align: -2px; margin-left: 3px; flex: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .verified-tick { color: #1f9d45; } }
+:root[data-theme="dark"] .verified-tick { color: #1f9d45; }
