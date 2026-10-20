@@ -190,6 +190,7 @@ export function Search({ q, categoryIds }: { q?: string; categoryIds?: string[] 
                 : `${sort === "top" ? "Highest rated first" : "Closest first"}. Searched out to ${out.reachedLabel} and found ${out.results.length} good ${out.results.length === 1 ? "match" : "matches"}.`
               : "No one offers this within 10 km yet."}
             {out.hiddenBelowFloor > 0 && ` ${out.hiddenBelowFloor} provider${out.hiddenBelowFloor > 1 ? "s" : ""} rated below ${s.config.qualityFloor} hidden.`}
+            {" "}Everyone shown is a verified resident.
           </p>
           {licensed && (
             <div className="notice n-warn"><AlertTriangle size={18} /><div className="grow">This kind of job needs a licensed provider. Check their licence before work starts.</div></div>

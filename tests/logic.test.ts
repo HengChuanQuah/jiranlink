@@ -24,7 +24,7 @@ describe("search ranking", () => {
     const out = searchProviders(s, { resident: user("u-aisyah"), categoryIds: ["cakes"] });
     const ids = out.results.map((r) => r.provider.id);
     expect(ids[0]).toBe("p-ani");
-    expect(out.results[0].ringLabel).toBe("In Elmina Green");
+    expect(out.results[0].ringLabel).toBe("Your area");
     expect(ids).toContain("p-meiling");
     expect(ids).toContain("p-rosnah");
     // Melawati is ~28 km away and must never appear for an Elmina resident.
@@ -34,7 +34,7 @@ describe("search ranking", () => {
   it("shows same-building providers first for condo residents", () => {
     const out = searchProviders(s, { resident: user("u-priya"), categoryIds: ["cakes"] });
     expect(out.results[0].provider.id).toBe("p-priya-bake");
-    expect(out.results[0].ringLabel).toBe("In your building");
+    expect(out.results[0].ringLabel).toBe("Your building");
   });
 
   it("hides providers below the quality floor and counts them", () => {

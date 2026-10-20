@@ -85,8 +85,8 @@ export function RatingLine({ stats }: { stats: RatingStats }) {
 export function TrustBadges({ provider, stats, compact }: { provider: Provider; stats: RatingStats; compact?: boolean }) {
   return (
     <div className="badges">
-      <span className="badge b-verified"><BadgeCheck size={13} /> Verified resident</span>
-      {stats.isNew && <span className="badge b-new">New neighbour</span>}
+      {!compact && <span className="badge b-verified"><BadgeCheck size={13} /> Verified resident</span>}
+      {stats.isNew && <span className="badge b-new"><Sparkles size={12} /> New neighbour</span>}
       {provider.introOffer && stats.isNew && <span className="badge b-offer"><Gift size={12} /> {provider.introOffer}</span>}
       {!compact && provider.socialVerified && <span className="badge b-plain">Socials linked</span>}
       {!compact && <span className="badge b-plain"><Clock size={12} /> Replies in ~{provider.responseMins < 60 ? `${provider.responseMins} min` : `${Math.round(provider.responseMins / 60)} h`}</span>}

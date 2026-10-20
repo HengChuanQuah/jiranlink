@@ -249,7 +249,7 @@ await step("Mr Tan: cleaning search shows exception card", async () => {
   await persona(page, "Mr Tan");
   await search(page, "cuci rumah");
   await page.waitForSelector(".pcard");
-  expect(await page.locator("text=Highly rated, a bit further").count() > 0, "no exception card");
+  expect(await page.locator(".b-top:has-text('Top rated')").count() > 0, "no exception card");
   await shot(page, "07-search-tan-phone");
 });
 

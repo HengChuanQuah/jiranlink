@@ -575,3 +575,14 @@ button.assist-row:hover { border-color: var(--red); }
 .assist-typing span:nth-child(2) { animation-delay: 0.2s; } .assist-typing span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes jl-typing { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
 .map-legend.lf { left: 54px; max-width: calc(100% - 66px); }
+
+/* ---------- Badge classes: each kind has its own look, readable in light and dark ----------
+   Distance (how far): neutral outline with a pin, never red.
+   Quality (how good): solid gold "Top rated", the only gold badge.
+   New: solid blue. Offer: solid orange. Verified: a tick after the name on cards. */
+.b-dist { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); font-weight: 700; }
+.b-top { background: #f2a516; color: #1d1a12; box-shadow: 0 2px 8px rgba(242, 165, 22, 0.35); }
+.b-new { background: #2563eb; color: #fff; }
+.b-offer { background: #c2410c; color: #fff; }
+.pcard .slot-flag { font-size: 12px; padding: 4px 10px; }
+.name-tick { color: var(--ok); vertical-align: -2px; margin-left: 2px; }

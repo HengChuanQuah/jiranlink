@@ -50,10 +50,11 @@ export function ringFor(
   return { ring: -1, distance };
 }
 
-export function ringLabel(ring: number, homeZones: ZoneMembership, ringsKm: number[]): string {
-  if (ring === 0) return "In your building";
-  if (ring === 1) return `In ${homeZones.precinct?.name ?? "your neighbourhood"}`;
-  if (ring === 2) return `In ${homeZones.township?.name ?? "your township"}`;
+export function ringLabel(ring: number, _homeZones: ZoneMembership, ringsKm: number[]): string {
+  // Plain words residents understand; precinct and township names stay on the map and in the search path.
+  if (ring === 0) return "Your building";
+  if (ring === 1) return "Your area";
+  if (ring === 2) return "Your township";
   if (ring >= 3) return `Within ${ringsKm[ring - 3]} km`;
   return "Online";
 }
