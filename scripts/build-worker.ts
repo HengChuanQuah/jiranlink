@@ -95,7 +95,7 @@ function cleanContents(contents) {
 // Each server instance keeps its own memory; that's good enough to cut most wasted attempts.
 const BUSY_MS = 5 * 60 * 1000;
 // A single Gemini call that runs past this is abandoned and the next model is tried.
-const CALL_LIMIT_MS = 7000;
+const CALL_LIMIT_MS = 12000;
 const busyUntil = {};
 // Lowest documented "thinking" level per model (Gemini docs); flash-lite already defaults to its lowest.
 const THINKING = { "gemini-3.8-flash": "low" };
@@ -109,8 +109,10 @@ function withThinking(body, model) {
 /** prefer: "lite" puts the lighter, faster model first (used by the assistant).
  *  trace (optional array) collects every attempt: model, HTTP status, milliseconds. */
 async function gemini(env, body, prefer, trace = []) {
-  let models = env.GEMINI_MODEL ? [env.GEMINI_MODEL] : prefer === "lite" ? [FALLBACK_MODEL, DEFAULT_MODEL] : [DEFAULT_MODEL, FALLBACK_MODEL];
-  if (env.GEMINI_MODEL && env.GEMINI_MODEL !== FALLBACK_MODEL) models.push(FALLBACK_MODEL);
+  // The assistant always tries the lighter model first, even when GEMINI_MODEL names a bigger one: speed matters more there.
+  const main = env.GEMINI_MODEL || DEFAULT_MODEL;
+  let models = prefer === "lite" ? [FALLBACK_MODEL, main] : [main, FALLBACK_MODEL];
+  models = models.filter((m, i) => models.indexOf(m) === i);
   const now = Date.now();
   const fresh = models.filter((m) => !(busyUntil[m] > now));
   if (fresh.length) models = [...fresh, ...models.filter((m) => !fresh.includes(m))].slice(0, models.length);

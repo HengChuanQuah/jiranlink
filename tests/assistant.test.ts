@@ -61,22 +61,32 @@ describe("assistant tools run on the app's own data", () => {
 });
 
 describe("assistant loop with the AI server", () => {
-  it("runs the tool the AI asks for, sends the result back verbatim, then shows cards", async () => {
+  it("runs the tool the AI asks for and shows its cards after one AI call", async () => {
     const sent = fakeServer([
       { role: "model", parts: [{ functionCall: { name: "find_providers", args: { need: "fix the pipes", category_id: "plumbing" } }, thoughtSignature: "sig-1" }] },
-      { role: "model", parts: [{ text: "These plumbers are near you in Taman Melawati." }] },
     ]);
     const ctx = ctxFor("u-tan");
     const r = await askAssistant("I want someone to fix the pipes, who can do it?", [], ctx, proxy);
     expect(r.mode).toBe("ai");
+    expect(sent.length).toBe(1);
     expect(r.toolCalls.map((t) => t.name)).toEqual(["find_providers"]);
     expect(r.providers?.results.length).toBeGreaterThan(0);
-    expect(r.text).toContain("plumbers");
-    // Second call carries the model's function call (with its signature) and our function response.
-    const second = sent[1].contents;
-    expect(second.at(-2).parts[0].thoughtSignature).toBe("sig-1");
-    expect(second.at(-1).parts[0].functionResponse.name).toBe("find_providers");
+    expect(r.text).toMatch(/plumbing/i);
     expect(r.history).toHaveLength(2);
+  });
+  it("greetings are answered instantly without calling the AI", async () => {
+    const sent = fakeServer([{ role: "model", parts: [{ text: "should not be used" }] }]);
+    const r = await askAssistant("hi", [], ctxFor("u-aisyah"), proxy);
+    expect(sent.length).toBe(0);
+    expect(r.text).toMatch(/^Hi Aisyah/);
+    expect(r.draft).toBeUndefined();
+    expect((await askAssistant("selamat pagi", [], ctxFor("u-aisyah"), proxy)).text).toMatch(/^Hai/);
+    expect((await askAssistant("thanks!", [], ctxFor("u-aisyah"), proxy)).text).toMatch(/welcome/);
+  });
+  it("offers a request post when nobody offers the service", async () => {
+    fakeServer([{ role: "model", parts: [{ functionCall: { name: "find_providers", args: { need: "teach me to fly a drone", category_id: "music" } } }] }]);
+    const r = await askAssistant("teach me to fly a drone", [], ctxFor("u-aisyah"), proxy);
+    if (!r.providers?.results.length && !r.providers?.online.length) expect(r.draft).toBe("teach me to fly a drone");
   });
   it("help answers carry buttons from the help guide", async () => {
     fakeServer([
@@ -94,10 +104,10 @@ describe("assistant loop with the AI server", () => {
     expect(r.note).toBeUndefined();
     expect(r.providers?.categoryId).toBe("aircond");
   });
-  it("stops after 4 rounds even if the AI keeps calling tools", async () => {
+  it("never makes a second AI call, even when the AI asks for a tool", async () => {
     const sent = fakeServer([{ role: "model", parts: [{ functionCall: { name: "my_bookings", args: {} } }] }]);
     const r = await askAssistant("bookings?", [], ctxFor("u-aisyah"), proxy);
-    expect(sent.length).toBe(4);
+    expect(sent.length).toBe(1);
     expect(r.text).toBeTruthy();
   });
 });
@@ -115,7 +125,10 @@ describe("quick answers without AI", () => {
     expect(quickAnswer("what's the status of my bookings", ctx).bookings).toBeDefined();
   });
   it("unmatched needs offer a request-board draft", () => {
-    expect(quickAnswer("zzkx blorp", ctx).draft).toBe("zzkx blorp");
+    expect(quickAnswer("someone to zzkx my blorp", ctx).draft).toBe("someone to zzkx my blorp");
+  });
+  it("very short unmatched text asks for more instead of drafting a post", () => {
+    expect(quickAnswer("zzkx", ctx).draft).toBeUndefined();
   });
 });
 

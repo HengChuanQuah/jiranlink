@@ -8,7 +8,7 @@ import { searchProviders, type SearchResult } from "../lib/search";
 import { zonesFor } from "../lib/geo";
 import { fmtSlot, rm } from "../lib/time";
 import { understandFast, thresholdsFrom } from "./agent";
-import { agentTurn, assistantReady, settingsFrom, type GeminiContent, type GeminiPart, type LlmSettings } from "./adapter";
+import { agentTurn, assistantReady, settingsFrom, type GeminiContent, type LlmSettings } from "./adapter";
 import { HELP, type HelpEntry } from "./help";
 import { CATEGORY_IDS, HELP_TOPICS, type HelpTopic } from "./spec";
 
@@ -146,10 +146,36 @@ function contextLine(ctx: Ctx) {
   return `[Context] Resident first name: ${ctx.me.name.split(" ")[0]}. Home area: ${area || ctx.me.homeLabel}.`;
 }
 
-/** The whole answer, all AI calls included, must arrive within this; otherwise the quick answer is shown. */
+/** The whole answer must arrive within this; otherwise the quick answer is shown. */
 export const ANSWER_LIMIT_MS = 15000;
 
+// Greetings and thanks are answered on the spot: no AI call, so "hi" is instant and can't time out.
+const GREETING = /^\s*(hi+|hello+|hey+|helo|hai|hallo|yo|morning|good (morning|afternoon|evening)|selamat (pagi|petang|malam|tengah hari)|salam|assalamualaikum|你好|您好|哈喽|嗨)[\s!.,~]*(there|jiranlink)?[\s!.,~]*$/i;
+const THANKS = /^\s*(thanks?|thank you|thx|ty|terima kasih|tq|tqvm|谢谢|多谢)[\s!.,~]*(so much|banyak|lots)?[\s!.,~]*$/i;
+
+export function smallTalk(question: string, ctx: Ctx): AssistantReply | null {
+  const name = ctx.me.name.split(" ")[0];
+  const base: AssistantReply = { text: "", toolCalls: [], mode: "quick", history: [] };
+  const malay = /\b(hai|selamat|salam|assalamualaikum|terima kasih)\b/i.test(question);
+  const chinese = /[\u3400-\u9fff]/.test(question);
+  if (GREETING.test(question)) {
+    return { ...base, text: chinese ? `${name}，你好！告诉我你需要什么服务，例如"冷气不冷"，或者问我 JiranLink 怎么用。`
+      : malay ? `Hai ${name}! Beritahu saya apa yang anda perlukan, contohnya "aircond tak sejuk", atau tanya cara guna JiranLink.`
+      : `Hi ${name}! Tell me what you need, like "aircond not cold" or "birthday cake for Saturday", or ask how something works on JiranLink.` };
+  }
+  if (THANKS.test(question)) {
+    return { ...base, text: chinese ? "不客气！还有什么需要帮忙的吗？" : malay ? "Sama-sama! Ada apa lagi saya boleh bantu?" : "You're welcome! Anything else I can help with?" };
+  }
+  return null;
+}
+
+/**
+ * One AI call per question. The AI picks a tool; the app runs it on its own data and shows the result directly,
+ * instead of asking the AI a second time to word it. That halves the waiting time.
+ */
 export async function askAssistant(question: string, history: GeminiContent[], ctx: Ctx, settings?: LlmSettings, limitMs = ANSWER_LIMIT_MS): Promise<AssistantReply> {
+  const local = smallTalk(question, ctx);
+  if (local) return local;
   const s = settings ?? settingsFrom(ctx.s.config);
   if (!assistantReady(ctx.s.config) && !settings) return quickAnswer(question, ctx);
 
@@ -157,53 +183,36 @@ export async function askAssistant(question: string, history: GeminiContent[], c
   const contents: GeminiContent[] = [...history.slice(-6), userTurn];
   const reply: AssistantReply = { text: "", toolCalls: [], mode: "ai", history: [] };
   const allowed = new Set<string>();
-  const deadline = Date.now() + limitMs;
 
   try {
-    for (let round = 0; round < 4; round++) {
-      const left = deadline - Date.now();
-      if (left < 500) throw new TimeoutError();
-      const model = await agentTurn(contents, s, left).catch((e: Error) => {
-        throw /too long/i.test(e.message) ? new TimeoutError() : e;
-      });
-      const calls = model.parts.filter((p) => p.functionCall);
-      if (!calls.length) {
-        reply.text = model.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
-        break;
-      }
-      contents.push(model); // sent back verbatim, including any thought signatures
-      const responses: GeminiPart[] = [];
-      for (const c of calls) {
-        const name = c.functionCall!.name;
-        const args = (c.functionCall!.args ?? {}) as Record<string, unknown>;
-        reply.toolCalls.push({ name, args });
-        let response: Record<string, unknown>;
-        if (name === "find_providers") {
-          const r = toolFindProviders(ctx, args);
-          response = r.response;
-          if (r.finding) {
-            reply.providers = r.finding;
-            [...r.finding.results, ...r.finding.online].forEach((x) => allowed.add(x.provider.id));
-          }
-        } else if (name === "get_help") {
-          const r = toolGetHelp(args);
-          response = r.response;
-          if (r.help) reply.help = r.help;
-        } else if (name === "my_bookings") {
-          const r = toolMyBookings(ctx);
-          response = r.response;
-          reply.bookings = r.bookings;
-        } else if (name === "draft_request") {
-          const r = toolDraftRequest(args);
-          response = r.response;
-          reply.draft = r.draft;
-        } else {
-          response = { error: "Unknown tool." };
+    const model = await agentTurn(contents, s, limitMs).catch((e: Error) => {
+      throw /too long/i.test(e.message) ? new TimeoutError() : e;
+    });
+    const said = model.parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
+    const calls = model.parts.filter((p) => p.functionCall);
+    for (const c of calls) {
+      const name = c.functionCall!.name;
+      const args = (c.functionCall!.args ?? {}) as Record<string, unknown>;
+      reply.toolCalls.push({ name, args });
+      if (name === "find_providers") {
+        const r = toolFindProviders(ctx, args);
+        if (r.finding) {
+          reply.providers = r.finding;
+          [...r.finding.results, ...r.finding.online].forEach((x) => allowed.add(x.provider.id));
+          // Nobody offers it: offer a request-board post straight away.
+          if (!r.finding.results.length && !r.finding.online.length) reply.draft = String(args.need ?? question);
         }
-        responses.push({ functionResponse: { name, response } });
+      } else if (name === "get_help") {
+        const r = toolGetHelp(args);
+        if (r.help) reply.help = r.help;
+      } else if (name === "my_bookings") {
+        reply.bookings = toolMyBookings(ctx).bookings;
+      } else if (name === "draft_request") {
+        reply.draft = toolDraftRequest(args).draft;
       }
-      contents.push({ role: "user", parts: responses });
     }
+    // Words come from the app's own data; the AI's own sentence is used only when no tool was needed.
+    reply.text = calls.length ? toolText(reply) : guardText(said, ctx, allowed);
   } catch (e) {
     const quick = quickAnswer(question, ctx);
     quick.fallbackReason = e instanceof TimeoutError
@@ -212,9 +221,18 @@ export async function askAssistant(question: string, history: GeminiContent[], c
     return quick;
   }
 
-  reply.text = guardText(reply.text, ctx, allowed) || fallbackText(reply);
+  reply.text = reply.text || fallbackText(reply);
   reply.history = [{ role: "user", parts: [{ text: question.slice(0, 500) }] }, { role: "model", parts: [{ text: reply.text }] }];
   return reply;
+}
+
+function toolText(r: AssistantReply): string {
+  if (r.help) return r.help.text;
+  if (r.providers?.results.length || r.providers?.online.length) return `These neighbours offer ${categoryById(r.providers.categoryId)?.name.toLowerCase() ?? "this"}:`;
+  if (r.providers) return "Nobody on JiranLink offers this near you yet. You can post it on the request board and neighbours can reply.";
+  if (r.bookings) return r.bookings.length ? "Here are your current bookings:" : "You have no bookings in progress.";
+  if (r.draft) return "Here's a request you can post for neighbours:";
+  return "";
 }
 
 function fallbackText(r: AssistantReply) {
@@ -231,6 +249,8 @@ const HOW_WORDS = /\b(how|what is|what's|why|can i|bagaimana|macam ?mana|cara|bo
 const BOOKING_WORDS = /\b(my bookings?|my jobs?|tempahan saya|booking saya|status)\b|我的预约/i;
 
 export function quickAnswer(question: string, ctx: Ctx): AssistantReply {
+  const chat = smallTalk(question, ctx);
+  if (chat) return chat;
   const q = question.toLowerCase();
   const base: AssistantReply = { text: "", toolCalls: [], mode: "quick", history: [] };
 
@@ -272,5 +292,8 @@ export function quickAnswer(question: string, ctx: Ctx): AssistantReply {
       text: found ? `These neighbours offer ${categoryById(f!.categoryId)?.name.toLowerCase()}:` : "Nobody on JiranLink offers this near you yet. You can post it on the request board.",
     };
   }
-  return { ...base, draft: question, text: "I couldn't match that to a service. Try describing the problem in a few words, or post it on the request board and neighbours can reply." };
+  const tiny = question.trim().split(/\s+/).length < 3;
+  return { ...base, draft: tiny ? undefined : question, text: tiny
+    ? "Tell me what you need in a few words, like \"aircond not cold\" or \"how do I pay after the job?\""
+    : "I couldn't match that to a service. Try describing the problem in a few words, or post it on the request board and neighbours can reply." };
 }
