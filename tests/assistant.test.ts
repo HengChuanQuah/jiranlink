@@ -90,7 +90,8 @@ describe("assistant loop with the AI server", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Too many questions" }), { status: 429 })));
     const r = await askAssistant("aircond bocor air", [], ctxFor("u-aisyah"), proxy);
     expect(r.mode).toBe("quick");
-    expect(r.note).toMatch(/Too many questions/);
+    expect(r.fallbackReason).toMatch(/Too many questions/);
+    expect(r.note).toBeUndefined();
     expect(r.providers?.categoryId).toBe("aircond");
   });
   it("stops after 4 rounds even if the AI keeps calling tools", async () => {
@@ -267,6 +268,20 @@ describe("AI server speed rules", () => {
   });
 });
 
+describe("quick answer help matching", () => {
+  it("matches whole words, so a booking question isn't read as a sign-up question", () => {
+    const r = quickAnswer("How do I book services using JiranLink?", ctxFor("u-aisyah"));
+    expect(r.toolCalls[0]?.args).toEqual({ topic: "booking_steps" });
+  });
+  it("matches longer word forms for longer keywords", () => {
+    expect(quickAnswer("how does cancelling work?", ctxFor("u-aisyah")).help?.topic).toBe("cancelling");
+  });
+  it("still finds sign-up help", () => {
+    const r = quickAnswer("how do i verify my account?", ctxFor("u-aisyah"));
+    expect(r.toolCalls[0]?.args).toEqual({ topic: "verification" });
+  });
+});
+
 describe("assistant answer time limit", () => {
   it("shows the quick answer when the AI is slower than the limit", async () => {
     vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise((_res, rej) => {
@@ -276,7 +291,8 @@ describe("assistant answer time limit", () => {
     const r = await askAssistant("sinki tersumbat", [], ctxFor("u-aisyah"), proxy, 600);
     expect(Date.now() - t0).toBeLessThan(2000);
     expect(r.mode).toBe("quick");
-    expect(r.note).toMatch(/longer than/);
+    expect(r.fallbackReason).toMatch(/longer than/);
+    expect(r.note).toBeUndefined();
     expect(r.providers?.categoryId).toBe("plumbing");
   });
 });

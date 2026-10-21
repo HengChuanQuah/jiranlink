@@ -36,6 +36,8 @@ export interface AssistantReply {
   toolCalls: { name: string; args: Record<string, unknown> }[];
   mode: "ai" | "quick";
   note?: string;
+  /** Why the quick answer was used (AI too slow or unavailable). For tests and the township team's AI check; residents don't see it. */
+  fallbackReason?: string;
   /** Turns to keep for follow-up questions (text only). */
   history: GeminiContent[];
 }
@@ -204,7 +206,7 @@ export async function askAssistant(question: string, history: GeminiContent[], c
     }
   } catch (e) {
     const quick = quickAnswer(question, ctx);
-    quick.note = e instanceof TimeoutError
+    quick.fallbackReason = e instanceof TimeoutError
       ? `The AI took longer than ${Math.round(limitMs / 1000)} seconds, so this is a quick keyword answer.`
       : `The AI is unavailable right now (${(e as Error).message}), so this is a quick keyword answer.`;
     return quick;
@@ -238,7 +240,14 @@ export function quickAnswer(question: string, ctx: Ctx): AssistantReply {
   }
 
   const helpScore = (t: HelpTopic) => {
-    const hits = HELP[t].keywords.map((k) => ({ word: k.replace(/^~/, ""), w: k.startsWith("~") ? 0.5 : 1 })).filter((k) => q.includes(k.word));
+    // Keywords must start a word, so "ic" (IC number) doesn't match inside "services". Keywords of 4+ letters
+    // also match longer forms ("cancel" in "cancelling"); short ones must be the whole word. Chinese matches anywhere.
+    const has = (w: string) => {
+      if (/[\u3400-\u9fff]/.test(w)) return q.includes(w);
+      const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^\\p{L}\\p{N}])${esc}${w.length > 3 ? "\\p{L}*" : ""}($|[^\\p{L}\\p{N}])`, "u").test(q);
+    };
+    const hits = HELP[t].keywords.map((k) => ({ word: k.replace(/^~/, ""), w: k.startsWith("~") ? 0.5 : 1 })).filter((k) => has(k.word));
     // "book" inside "booking" counts once.
     return hits.filter((k) => !hits.some((o) => o !== k && o.word.includes(k.word))).reduce((n, k) => n + k.w, 0);
   };

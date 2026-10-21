@@ -80,7 +80,7 @@ export function AiCheck() {
       const st = getState();
       const me = st.users.find((u) => u.id === "u-aisyah") ?? st.users[0];
       let r = await askAssistant(c.q, [], { s: st, me });
-      if (r.mode === "quick" && isBusy(r.note)) {
+      if (r.mode === "quick" && isBusy(r.fallbackReason)) {
         setProgress(`AI is rate-limited, waiting 20 s… (${i + 1} of ${ASSISTANT_CASES.length})`);
         await sleep(20000);
         r = await askAssistant(c.q, [], { s: getState(), me });
@@ -151,7 +151,7 @@ export function AiCheck() {
 const pct = (n: number) => `${Math.round((100 * n) / 40)}%`;
 
 function judge(c: AssistantCase, r: AssistantReply): { pass: boolean; why: string } {
-  if (r.mode === "quick") return { pass: false, why: `AI error: ${r.note ?? "no answer"}` };
+  if (r.mode === "quick") return { pass: false, why: `AI error: ${r.fallbackReason ?? "no answer"}` };
   const names = r.toolCalls.map((t) => t.name);
   const argOk = (name: string, key: string) =>
     !c.accept || r.toolCalls.some((t) => t.name === name && c.accept!.includes(String(t.args[key] ?? "")));
