@@ -129,10 +129,12 @@ async function gemini(env, body, prefer, trace = []) {
           signal: AbortSignal.timeout(CALL_LIMIT_MS),
         });
       } catch (e) {
-        trace.push({ model, status: "timeout", ms: Date.now() - t0 });
-        busyUntil[model] = Date.now() + BUSY_MS;
-        last = "Gemini " + model + " took longer than " + CALL_LIMIT_MS / 1000 + " s.";
-        lastStatus = 504;
+        const slow = e && (e.name === "TimeoutError" || e.name === "AbortError");
+        trace.push({ model, status: slow ? "timeout" : "network", ms: Date.now() - t0 });
+        // Too slow: skip this model for a while. A network error: just try the next model.
+        if (slow) busyUntil[model] = Date.now() + BUSY_MS;
+        last = slow ? "Gemini " + model + " took longer than " + CALL_LIMIT_MS / 1000 + " s." : "Could not reach Gemini (" + (e && e.message) + ").";
+        lastStatus = slow ? 504 : 502;
         break;
       }
       const data = await res.json().catch(() => ({}));

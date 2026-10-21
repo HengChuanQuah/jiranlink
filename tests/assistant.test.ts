@@ -152,6 +152,13 @@ describe("AI server (worker/worker.js)", () => {
     expect(res.status).toBe(200);
     expect(String(f.mock.calls[1][0])).toContain("flash-lite");
   });
+  it("remembers a model that isn't offered and skips it on the next call", async () => {
+    const f = vi.fn().mockResolvedValue(gemini(200, ok));
+    vi.stubGlobal("fetch", f);
+    await worker.fetch(req("/classify", { text: "paip" }, undefined, "2.2.2.5"), env);
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(String(f.mock.calls[0][0])).toContain("flash-lite");
+  });
   it("only forwards allowed fields to Gemini and caps message length", async () => {
     const f = vi.fn(async () => gemini(200, { candidates: [{ content: { parts: [{ text: "hi" }] } }] }));
     vi.stubGlobal("fetch", f);
@@ -195,7 +202,9 @@ describe("AI server on Vercel (api/*.js)", () => {
 
 describe("AI server handles a busy model", () => {
   it("retries once, then falls back to the lighter model", async () => {
-    // Clean server instance (the Cloudflare build), so earlier tests' busy marks don't interfere.
+    // Earlier tests mark models busy or missing; jump past those marks.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 25 * 3600 * 1000);
     const handle = (r: Request, env: object) => worker.fetch(r, env);
     const busy = () => new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 });
     const good = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }), { status: 200 });
@@ -206,6 +215,7 @@ describe("AI server handles a busy model", () => {
     expect(res.status).toBe(200);
     expect(f).toHaveBeenCalledTimes(3);
     expect(body.model).toContain("flash-lite");
+    vi.useRealTimers();
   });
 });
 
@@ -222,10 +232,10 @@ describe("Chrome 155 crash guard (regression)", () => {
 });
 
 describe("AI server speed rules", () => {
-  // Earlier tests leave models marked busy for 5 minutes; start each of these 10 minutes later.
-  let clock = Date.now();
+  // Earlier tests leave models marked busy (5 minutes) or missing (a day); start each of these 25 hours later.
+  let clock = Date.now() + 25 * 3600 * 1000;
   beforeEach(() => {
-    clock += 10 * 60 * 1000;
+    clock += 25 * 3600 * 1000;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(clock);
   });
@@ -254,7 +264,9 @@ describe("AI server speed rules", () => {
     expect(second.generationConfig.thinkingConfig).toBeUndefined();
   });
   it("remembers a busy model and skips it next time", async () => {
-    // Clean server instance (the Cloudflare build), so earlier tests' busy marks don't interfere.
+    // Earlier tests mark models busy or missing; jump past those marks.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 25 * 3600 * 1000);
     const handle = (r: Request, env: object) => worker.fetch(r, env);
     const busy = () => new Response(JSON.stringify({ error: { message: "high demand" } }), { status: 503 });
     const f1 = vi.fn().mockImplementationOnce(async () => busy()).mockImplementationOnce(async () => busy()).mockImplementation(async () => ok());
