@@ -87,6 +87,8 @@ function cleanContents(contents) {
 // Models that were busy recently are skipped for a while, so every call doesn't fail on them first.
 // Each server instance keeps its own memory; that's good enough to cut most wasted attempts.
 const BUSY_MS = 5 * 60 * 1000;
+// A single Gemini call that runs past this is abandoned and the next model is tried.
+const CALL_LIMIT_MS = 7000;
 const busyUntil = {};
 // Lowest documented "thinking" level per model (Gemini docs); flash-lite already defaults to its lowest.
 const THINKING = { "gemini-3.8-flash": "low" };
@@ -97,8 +99,9 @@ function withThinking(body, model) {
   return { ...body, generationConfig: { ...(body.generationConfig || {}), thinkingConfig: { thinkingLevel: level } } };
 }
 
-/** prefer: "lite" puts the lighter, faster model first (used by the assistant). */
-async function gemini(env, body, prefer) {
+/** prefer: "lite" puts the lighter, faster model first (used by the assistant).
+ *  trace (optional array) collects every attempt: model, HTTP status, milliseconds. */
+async function gemini(env, body, prefer, trace = []) {
   let models = env.GEMINI_MODEL ? [env.GEMINI_MODEL] : prefer === "lite" ? [FALLBACK_MODEL, DEFAULT_MODEL] : [DEFAULT_MODEL, FALLBACK_MODEL];
   if (env.GEMINI_MODEL && env.GEMINI_MODEL !== FALLBACK_MODEL) models.push(FALLBACK_MODEL);
   const now = Date.now();
@@ -109,12 +112,24 @@ async function gemini(env, body, prefer) {
     let thinking = true;
     // Busy (500/503): wait briefly and retry once. Busy again, out of quota (429) or unavailable: next model.
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-        body: JSON.stringify(thinking ? withThinking(body, model) : body),
-      });
+      const t0 = Date.now();
+      let res;
+      try {
+        res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+          body: JSON.stringify(thinking ? withThinking(body, model) : body),
+          signal: AbortSignal.timeout(CALL_LIMIT_MS),
+        });
+      } catch (e) {
+        trace.push({ model, status: "timeout", ms: Date.now() - t0 });
+        busyUntil[model] = Date.now() + BUSY_MS;
+        last = "Gemini " + model + " took longer than " + CALL_LIMIT_MS / 1000 + " s.";
+        lastStatus = 504;
+        break;
+      }
       const data = await res.json().catch(() => ({}));
+      trace.push({ model, status: res.status, ms: Date.now() - t0 });
       if (res.ok) {
         const content = data?.candidates?.[0]?.content;
         if (!content) throw Object.assign(new Error("Gemini returned no answer (" + (data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "empty") + ")."), { status: 502 });
@@ -127,6 +142,8 @@ async function gemini(env, body, prefer) {
       const busy = res.status === 500 || res.status === 503;
       if (busy && attempt === 0) { await new Promise((r) => setTimeout(r, 800)); continue; }
       if (busy || res.status === 429) busyUntil[model] = Date.now() + BUSY_MS;
+      // Model not offered to this key: skip it for a day instead of failing on it every time.
+      if (res.status === 404 || res.status === 403 || (res.status === 400 && /model/i.test(last))) busyUntil[model] = Date.now() + 24 * 3600 * 1000;
       const tryNext = busy || res.status === 429 || res.status === 404 || res.status === 403 || (res.status === 400 && /model/i.test(last));
       if (tryNext) break;
       throw Object.assign(new Error(last), { status: lastStatus });
@@ -150,6 +167,25 @@ async function handle(request, env) {
     if (tooMany) return json({ error: tooMany }, 429, headers);
 
     try {
+      if (request.method === "GET" && route === "check" && url.searchParams.get("agent")) {
+        // Timing test for the assistant: one agent turn on a short message, with every attempt timed.
+        const trace = [];
+        const t0 = Date.now();
+        const msg = String(url.searchParams.get("agent")).slice(0, 80);
+        try {
+          const r = await gemini(env, {
+            systemInstruction: { parts: [{ text: AGENT_PROMPT }] },
+            tools: [{ functionDeclarations: AGENT_TOOLS }],
+            contents: [{ role: "user", parts: [{ text: msg }] }],
+          }, "lite", trace);
+          const parts = r.content.parts || [];
+          return json({ ok: true, message: msg, model: r.model, totalMs: Date.now() - t0, attempts: trace,
+            reply: parts.map((p) => p.text || (p.functionCall ? "[tool " + p.functionCall.name + "]" : "")).join(""), ranFrom: where(request) }, 200, headers);
+        } catch (e) {
+          return json({ ok: false, message: msg, totalMs: Date.now() - t0, attempts: trace, error: e.message, ranFrom: where(request) }, 200, headers);
+        }
+      }
+
       if (request.method === "GET" && route === "check") {
         const r = await gemini(env, {
           systemInstruction: { parts: [{ text: CLASSIFY_PROMPT }] },
@@ -179,12 +215,13 @@ async function handle(request, env) {
       }
 
       if (route === "agent") {
+        const trace = [];
         const r = await gemini(env, {
           systemInstruction: { parts: [{ text: AGENT_PROMPT }] },
           tools: [{ functionDeclarations: AGENT_TOOLS }],
           contents: cleanContents(body.contents),
-        }, "lite");
-        return json({ content: r.content, model: r.model }, 200, headers);
+        }, "lite", trace);
+        return json({ content: r.content, model: r.model, attempts: trace }, 200, headers);
       }
 
       return json({ error: "Not found." }, 404, headers);
